@@ -2997,7 +2997,14 @@ export default function AttendanceManagement() {
                   })
 
                   if (response.ok) {
-                    const data = await response.json()
+                    let data
+                    try {
+                      data = await response.json()
+                    } catch (jsonError) {
+                      console.error('解析 API 響應失敗:', jsonError)
+                      throw new Error('伺服器響應格式錯誤')
+                    }
+                    
                     if (data.success) {
                       // 背景更新列表
                       await loadPrizes()
@@ -3019,11 +3026,20 @@ export default function AttendanceManagement() {
                       if (wasEditing && currentEditingPrize) {
                         setEditingPrize(currentEditingPrize)
                       }
-                      setToast({ message: '操作失敗：' + (data.error || '未知錯誤'), type: 'error' })
+                      const errorMsg = filterVercelText(data.error || '未知錯誤')
+                      setToast({ message: '操作失敗：' + errorMsg, type: 'error' })
                       setTimeout(() => setToast(null), 4000)
                     }
                   } else {
-                    const errorData = await response.json().catch(() => ({ error: '操作失敗' }))
+                    let errorData
+                    try {
+                      const text = await response.text()
+                      errorData = text ? JSON.parse(text) : { error: `HTTP ${response.status}: ${response.statusText}` }
+                    } catch (parseError) {
+                      console.error('解析錯誤響應失敗:', parseError)
+                      errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+                    }
+                    
                     const errorMessage = errorData.error || '操作失敗'
                     
                     // 失敗時重新打開彈窗並顯示錯誤
@@ -3041,10 +3057,10 @@ export default function AttendanceManagement() {
                     // 檢查是否為速率限制錯誤
                     const errorMsg = response.status === 429 || errorMessage.includes('Too many requests') || errorMessage.includes('請求過於頻繁')
                       ? '⚠️ 請求過於頻繁，請稍候 1-2 分鐘後再試上傳圖片'
-                      : '操作失敗：' + errorMessage
+                      : '操作失敗：' + filterVercelText(errorMessage)
                     setToast({ message: errorMsg, type: 'error' })
                     setTimeout(() => setToast(null), 4000)
-                    console.error('Error saving prize:', errorData)
+                    console.error('Error saving prize:', { status: response.status, error: errorData })
                   }
                 } catch (error) {
                   console.error('Error saving prize:', error)
@@ -3064,7 +3080,7 @@ export default function AttendanceManagement() {
                   
                   const errorMsg = errorMessage.includes('Too many requests') || errorMessage.includes('rate limit')
                     ? '⚠️ 請求過於頻繁，請稍候 1-2 分鐘後再試上傳圖片'
-                    : '操作失敗：' + errorMessage
+                    : '操作失敗：' + filterVercelText(errorMessage)
                   setToast({ message: errorMsg, type: 'error' })
                   setTimeout(() => setToast(null), 4000)
                 }
