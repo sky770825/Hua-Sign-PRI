@@ -104,7 +104,7 @@ export async function DELETE(
 ) {
   try {
     const id = parseInt(params.id)
-    console.log('刪除會員 v3:', { id })
+    console.log('刪除會員 v4:', { id })
 
     if (isNaN(id) || id <= 0) {
       return apiError('會員 ID 無效', 400)
