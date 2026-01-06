@@ -1973,6 +1973,15 @@ export default function AttendanceManagement() {
                         onClick={async () => {
                           if (!confirm('確定要刪除此獎品嗎？')) return
                           try {
+                            // 先在前端快速移除卡片，提升體感速度（樂觀更新）
+                            setPrizes((prev) => prev.filter((p) => p.id !== prize.id))
+
+                            // 如果目前有開啟編輯此獎品的彈窗，一併關閉
+                            if (editingPrize && editingPrize.id === prize.id) {
+                              setEditingPrize(null)
+                              setShowPrizeModal(false)
+                            }
+
                             const response = await fetch(`/api/prizes/${prize.id}`, {
                               method: 'DELETE',
                             })
@@ -1980,18 +1989,22 @@ export default function AttendanceManagement() {
                             if (response.ok) {
                               const data = await response.json()
                               if (data.success) {
-                                alert('獎品已成功刪除')
-                                loadPrizes()
+                                // 後端也刪除成功，不需要再額外 reload，前端狀態已更新
+                                console.log('獎品已成功刪除', { id: prize.id })
                               } else {
                                 alert('刪除失敗：' + (data.error || '未知錯誤'))
+                                // 若後端失敗，重新載入一次以恢復正確狀態
+                                await loadPrizes()
                               }
                             } else {
                               const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
                               alert('刪除失敗：' + (errorData.error || '未知錯誤'))
+                              await loadPrizes()
                             }
                           } catch (error) {
                             console.error('Error deleting prize:', error)
                             alert('刪除失敗：網路錯誤或伺服器無回應')
+                            await loadPrizes()
                           }
                         }}
                         className="flex-1 px-3 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-all text-sm font-semibold"
@@ -2497,6 +2510,16 @@ export default function AttendanceManagement() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault()
+                // 保存當前表單數據（在清空前，用於錯誤恢復）
+                const savedPrizeData = {
+                  name: newPrize.name,
+                  totalQuantity: newPrize.totalQuantity,
+                  probability: newPrize.probability,
+                  image: newPrize.image,
+                }
+                const wasEditing = !!editingPrize
+                const currentEditingPrize = editingPrize
+                
                 try {
                   const formData = new FormData()
                   formData.append('name', newPrize.name)
@@ -2511,6 +2534,13 @@ export default function AttendanceManagement() {
                     : '/api/prizes'
                   const method = editingPrize ? 'PUT' : 'POST'
 
+                  // 樂觀更新：立即關閉彈窗，提升用戶體驗
+                  setShowPrizeModal(false)
+                  
+                  // 清空表單狀態
+                  setEditingPrize(null)
+                  setNewPrize({ name: '', totalQuantity: 1, probability: 1.0, image: null })
+
                   const response = await fetch(url, {
                     method,
                     body: formData,
@@ -2519,17 +2549,44 @@ export default function AttendanceManagement() {
                   if (response.ok) {
                     const data = await response.json()
                     if (data.success) {
-                      alert(editingPrize ? '獎品已成功更新' : '獎品已成功新增')
-                      setShowPrizeModal(false)
-                      setEditingPrize(null)
-                      setNewPrize({ name: '', totalQuantity: 1, probability: 1.0, image: null })
-                      loadPrizes()
+                      // 背景更新列表
+                      await loadPrizes()
+                      // 使用自動消失的成功提示
+                      const successMsg = wasEditing ? '獎品已成功更新' : '獎品已成功新增'
+                      console.log('✅', successMsg, savedPrizeData.name)
+                      // 顯示輕量提示（可以考慮未來改用 toast 組件）
+                      setTimeout(() => {
+                        alert(successMsg)
+                      }, 100)
                     } else {
+                      // 失敗時重新打開彈窗並顯示錯誤
+                      setShowPrizeModal(true)
+                      setNewPrize({ 
+                        name: savedPrizeData.name, 
+                        totalQuantity: savedPrizeData.totalQuantity, 
+                        probability: savedPrizeData.probability, 
+                        image: savedPrizeData.image 
+                      })
+                      if (wasEditing && currentEditingPrize) {
+                        setEditingPrize(currentEditingPrize)
+                      }
                       alert('操作失敗：' + (data.error || '未知錯誤'))
                     }
                   } else {
                     const errorData = await response.json().catch(() => ({ error: '操作失敗' }))
                     const errorMessage = errorData.error || '操作失敗'
+                    
+                    // 失敗時重新打開彈窗並顯示錯誤
+                    setShowPrizeModal(true)
+                    setNewPrize({ 
+                      name: savedPrizeData.name, 
+                      totalQuantity: savedPrizeData.totalQuantity, 
+                      probability: savedPrizeData.probability, 
+                      image: savedPrizeData.image 
+                    })
+                    if (wasEditing && currentEditingPrize) {
+                      setEditingPrize(currentEditingPrize)
+                    }
                     
                     // 檢查是否為速率限制錯誤
                     if (response.status === 429 || errorMessage.includes('Too many requests') || errorMessage.includes('請求過於頻繁')) {
@@ -2542,6 +2599,19 @@ export default function AttendanceManagement() {
                 } catch (error) {
                   console.error('Error saving prize:', error)
                   const errorMessage = error instanceof Error ? error.message : '網路錯誤'
+                  
+                  // 失敗時重新打開彈窗並恢復表單數據
+                  setShowPrizeModal(true)
+                  setNewPrize({ 
+                    name: savedPrizeData.name, 
+                    totalQuantity: savedPrizeData.totalQuantity, 
+                    probability: savedPrizeData.probability, 
+                    image: savedPrizeData.image 
+                  })
+                  if (wasEditing && currentEditingPrize) {
+                    setEditingPrize(currentEditingPrize)
+                  }
+                  
                   if (errorMessage.includes('Too many requests') || errorMessage.includes('rate limit')) {
                     alert('⚠️ 請求過於頻繁，請稍候 1-2 分鐘後再試上傳圖片')
                   } else {
