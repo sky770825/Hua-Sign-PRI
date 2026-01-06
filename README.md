@@ -18,7 +18,8 @@
 ## 技術棧
 
 - **框架**: Next.js 14
-- **資料庫**: SQLite (better-sqlite3)
+- **資料庫**: Insforge PostgreSQL（雲端）
+- **儲存**: Insforge Storage（雲端）
 - **樣式**: Tailwind CSS
 - **語言**: TypeScript
 
@@ -48,14 +49,19 @@ npm start
 
 ## 資料庫
 
-- **類型**: SQLite 3.x
-- **位置**: `data/checkin.db`
-- **備份**: 使用後台「資料庫備份」功能或直接複製 `data/checkin.db`
+- **類型**: Insforge PostgreSQL（雲端）
+- **位置**: Insforge 雲端資料庫
+- **備份**: Insforge 自動備份
 
-## 重要檔案
+## 部署
 
-- 資料庫檔案：`data/checkin.db`（**請定期備份**）
-- 上傳圖片：`public/uploads/`（**請定期備份**）
+### GitHub + Vercel（推薦）
+
+1. 推送到 GitHub
+2. 在 [Vercel](https://vercel.com) 導入專案
+3. 自動部署完成
+
+詳見 [GITHUB_DEPLOYMENT.md](./GITHUB_DEPLOYMENT.md)
 
 ## 部署注意事項
 
