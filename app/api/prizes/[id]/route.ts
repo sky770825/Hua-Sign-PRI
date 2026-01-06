@@ -164,10 +164,17 @@ export async function PUT(
           
           if (!imageUrl) {
             console.error('上傳成功但無法獲取圖片 URL:', uploadData)
-            return NextResponse.json(
-              { error: '上傳成功但無法獲取圖片 URL，請檢查 Insforge Storage 設置' },
-              { status: 500 }
-            )
+            // 嘗試手動構建 URL（如果知道 baseUrl）
+            const baseUrl = 'https://dsfp4gvz.us-east.insforge.app'
+            if (imageKey) {
+              imageUrl = `${baseUrl}/storage/v1/object/public/${BUCKETS.PRIZES}/${imageKey}`
+              console.log('使用手動構建的 URL:', imageUrl)
+            } else {
+              return NextResponse.json(
+                { error: '上傳成功但無法獲取圖片 URL，請檢查 Insforge Storage 設置' },
+                { status: 500 }
+              )
+            }
           }
         } else {
           console.error('Upload succeeded but no data returned')
