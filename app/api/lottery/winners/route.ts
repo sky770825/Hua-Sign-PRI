@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
 
+// 標記為動態路由（因為使用了 request.url）
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -24,16 +27,26 @@ export async function GET(request: Request) {
     }
 
     // 格式化返回數據
-    const formattedWinners = (winners || []).map((w: any) => ({
-      id: w.id,
-      meeting_date: w.meeting_date,
-      created_at: w.created_at,
-      member_id: w.checkin_members?.id,
-      member_name: w.checkin_members?.name,
-      prize_id: w.checkin_prizes?.id,
-      prize_name: w.checkin_prizes?.name,
-      prize_image_url: w.checkin_prizes?.image_url,
-    }))
+    const formattedWinners = (winners || []).map((w: any) => {
+      // 處理 checkin_members 和 checkin_prizes 可能是數組或對象的情況
+      const member = Array.isArray(w.checkin_members) 
+        ? w.checkin_members[0] 
+        : w.checkin_members
+      const prize = Array.isArray(w.checkin_prizes) 
+        ? w.checkin_prizes[0] 
+        : w.checkin_prizes
+      
+      return {
+        id: w.id,
+        meeting_date: w.meeting_date,
+        created_at: w.created_at,
+        member_id: member?.id,
+        member_name: member?.name,
+        prize_id: prize?.id,
+        prize_name: prize?.name,
+        prize_image_url: prize?.image_url,
+      }
+    })
 
     return NextResponse.json({ winners: formattedWinners })
   } catch (error) {

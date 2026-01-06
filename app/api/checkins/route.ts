@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
 
+// 標記為動態路由（因為使用了 request.url）
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -39,12 +42,37 @@ export async function GET(request: Request) {
     }
 
     // 格式化返回數據
-    const formattedCheckins = (checkins || []).map((c: any) => ({
-      member_id: c.member_id,
-      checkin_time: c.checkin_time,
-      message: c.message,
-      status: c.status,
-    }))
+    interface CheckinWithMember {
+      member_id: number
+      checkin_time: string
+      message: string | null
+      status: string
+      checkin_members?: {
+        id: number
+        name: string
+        profession: string
+      } | {
+        id: any
+        name: any
+        profession: any
+      }[]
+    }
+    
+    const formattedCheckins = (checkins || []).map((c: any) => {
+      // 處理 checkin_members 可能是數組或對象的情況
+      const member = Array.isArray(c.checkin_members) 
+        ? c.checkin_members[0] 
+        : c.checkin_members
+      
+      return {
+        member_id: c.member_id,
+        checkin_time: c.checkin_time,
+        message: c.message,
+        status: c.status,
+        name: member?.name || '',
+        profession: member?.profession || '',
+      }
+    })
 
     return NextResponse.json({
       meeting: meetings || null,
