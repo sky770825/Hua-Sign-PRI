@@ -86,8 +86,20 @@ export async function PUT(
 
         if (uploadError) {
           console.error('Error uploading image:', uploadError)
+          
+          // 檢查是否為速率限制錯誤
+          const errorMessage = uploadError.message || String(uploadError)
+          if (errorMessage.includes('Too many requests') || 
+              errorMessage.includes('rate limit') ||
+              errorMessage.includes('429')) {
+            return NextResponse.json(
+              { error: '請求過於頻繁，請稍候 1-2 分鐘後再試' },
+              { status: 429 }
+            )
+          }
+          
           return NextResponse.json(
-            { error: `上傳失敗：${uploadError.message || '未知錯誤'}` },
+            { error: `上傳失敗：${errorMessage}` },
             { status: 500 }
           )
         }
