@@ -70,34 +70,103 @@ export async function POST(request: Request) {
         const arrayBuffer = await imageFile.arrayBuffer()
         const blob = new Blob([arrayBuffer], { type: imageFile.type })
         
+        console.log('開始上傳圖片:', {
+          fileName,
+          fileSize: imageFile.size,
+          fileType: imageFile.type,
+          bucket: BUCKETS.PRIZES,
+          serviceKeySet: !!process.env.INFORGE_SERVICE_KEY,
+        })
+        
         // 使用服務端客戶端上傳（避免外鍵約束錯誤）
-        const { data: uploadData, error: uploadError } = await insforgeService.storage
+        const uploadResult = await insforgeService.storage
           .from(BUCKETS.PRIZES)
           .upload(fileName, blob)
+        
+        console.log('上傳結果:', {
+          hasData: !!uploadResult.data,
+          hasError: !!uploadResult.error,
+          data: uploadResult.data,
+          error: uploadResult.error,
+        })
+
+        const { data: uploadData, error: uploadError } = uploadResult
 
         if (uploadError) {
-          console.error('Error uploading image:', uploadError)
+          console.error('圖片上傳錯誤詳情:', {
+            error: uploadError,
+            message: uploadError.message,
+            code: (uploadError as any).code,
+            details: (uploadError as any).details,
+            fileName,
+            bucket: BUCKETS.PRIZES,
+            serviceKeySet: !!process.env.INFORGE_SERVICE_KEY,
+          })
           
           // 檢查是否為速率限制錯誤
           const errorMessage = uploadError.message || String(uploadError)
+          const errorCode = (uploadError as any).code || ''
+          
           if (errorMessage.includes('Too many requests') || 
               errorMessage.includes('rate limit') ||
-              errorMessage.includes('429')) {
+              errorMessage.includes('429') ||
+              errorCode === '429') {
             return NextResponse.json(
               { error: '請求過於頻繁，請稍候 1-2 分鐘後再試' },
               { status: 429 }
             )
           }
           
+          // 檢查是否為儲存桶不存在或權限問題
+          if (errorMessage.includes('bucket') || 
+              errorMessage.includes('not found') ||
+              errorMessage.includes('permission') ||
+              errorMessage.includes('access denied') ||
+              errorMessage.includes('foreign key') ||
+              errorCode === '404' ||
+              errorCode === '403') {
+            return NextResponse.json(
+              { error: '儲存桶不存在或無權限，請檢查 Insforge 設置。如果使用匿名 key，請設置 INFORGE_SERVICE_KEY 環境變數。' },
+              { status: 500 }
+            )
+          }
+          
           return NextResponse.json(
-            { error: `上傳失敗：${errorMessage}` },
+            { error: `上傳失敗：${errorMessage}${errorCode ? ` (錯誤碼: ${errorCode})` : ''}` },
             { status: 500 }
           )
         }
 
-        if (uploadData && uploadData.url) {
-          imageUrl = uploadData.url
-          imageKey = uploadData.key || fileName
+        if (uploadData) {
+          // Insforge 可能返回不同的數據結構，嘗試多種方式獲取 URL
+          imageUrl = uploadData.url || 
+                     (uploadData as any).publicUrl || 
+                     (uploadData as any).signedUrl || 
+                     ''
+          imageKey = uploadData.key || 
+                    (uploadData as any).path || 
+                    fileName
+          
+          console.log('上傳成功:', {
+            imageUrl,
+            imageKey,
+            uploadData,
+          })
+          
+          if (!imageUrl) {
+            console.error('上傳成功但無法獲取圖片 URL:', uploadData)
+            // 嘗試手動構建 URL（如果知道 baseUrl）
+            const baseUrl = 'https://dsfp4gvz.us-east.insforge.app'
+            if (imageKey) {
+              imageUrl = `${baseUrl}/storage/v1/object/public/${BUCKETS.PRIZES}/${imageKey}`
+              console.log('使用手動構建的 URL:', imageUrl)
+            } else {
+              return NextResponse.json(
+                { error: '上傳成功但無法獲取圖片 URL，請檢查 Insforge Storage 設置' },
+                { status: 500 }
+              )
+            }
+          }
         } else {
           console.error('Upload succeeded but no data returned')
           return NextResponse.json(

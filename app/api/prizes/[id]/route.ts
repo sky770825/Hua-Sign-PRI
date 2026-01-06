@@ -84,6 +84,7 @@ export async function PUT(
           fileSize: imageFile.size,
           fileType: imageFile.type,
           bucket: BUCKETS.PRIZES,
+          serviceKeySet: !!process.env.INFORGE_SERVICE_KEY,
         })
         
         // 使用服務端客戶端上傳（避免外鍵約束錯誤）
@@ -108,6 +109,7 @@ export async function PUT(
             details: (uploadError as any).details,
             fileName,
             bucket: BUCKETS.PRIZES,
+            serviceKeySet: !!process.env.INFORGE_SERVICE_KEY,
           })
           
           // 檢查是否為速率限制錯誤
@@ -129,10 +131,11 @@ export async function PUT(
               errorMessage.includes('not found') ||
               errorMessage.includes('permission') ||
               errorMessage.includes('access denied') ||
+              errorMessage.includes('foreign key') ||
               errorCode === '404' ||
               errorCode === '403') {
             return NextResponse.json(
-              { error: '儲存桶不存在或無權限，請檢查 Insforge 設置' },
+              { error: '儲存桶不存在或無權限，請檢查 Insforge 設置。如果使用匿名 key，請設置 INFORGE_SERVICE_KEY 環境變數。' },
               { status: 500 }
             )
           }
