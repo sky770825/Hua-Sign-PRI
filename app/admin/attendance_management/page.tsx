@@ -1183,14 +1183,14 @@ export default function AttendanceManagement() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-5 fade-in">
-          <div className={`px-6 py-4 rounded-lg shadow-2xl backdrop-blur-sm border-2 ${
+        <div className="fixed top-4 right-4 z-50" style={{ animation: 'slideIn 0.3s ease-out' }}>
+          <div className={`px-6 py-4 rounded-lg shadow-2xl backdrop-blur-sm border-2 min-w-[300px] ${
             toast.type === 'success' 
               ? 'bg-green-500/95 border-green-400 text-white' 
               : 'bg-red-500/95 border-red-400 text-white'
           }`}>
             <div className="flex items-center gap-3">
-              <span className="text-2xl">
+              <span className="text-2xl flex-shrink-0">
                 {toast.type === 'success' ? '✅' : '❌'}
               </span>
               <span className="font-semibold">{toast.message}</span>
