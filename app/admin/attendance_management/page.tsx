@@ -666,6 +666,10 @@ export default function AttendanceManagement() {
   const handleDeleteMember = async (memberId: number) => {
     if (!confirm('確定要刪除此會員嗎？此操作無法復原。')) return
 
+    // 樂觀更新：立即從列表中移除
+    const memberToDelete = members.find(m => m.id === memberId)
+    setMembers(prev => prev.filter(m => m.id !== memberId))
+    
     try {
       const response = await fetch(`/api/members/${memberId}`, {
         method: 'DELETE',
@@ -674,18 +678,35 @@ export default function AttendanceManagement() {
       if (response.ok) {
         const data = await response.json()
         if (data.success) {
-          alert('會員已成功刪除')
-          loadData()
+          // 背景刷新數據確保同步
+          await loadData(false)
+          setToast({ message: '會員已成功刪除', type: 'success' })
+          setTimeout(() => setToast(null), 3000)
         } else {
-          alert('刪除失敗：' + (data.error || '未知錯誤'))
+          // 失敗時恢復列表
+          if (memberToDelete) {
+            setMembers(prev => [...prev, memberToDelete].sort((a, b) => a.id - b.id))
+          }
+          setToast({ message: '刪除失敗：' + (data.error || '未知錯誤'), type: 'error' })
+          setTimeout(() => setToast(null), 4000)
         }
       } else {
+        // 失敗時恢復列表
+        if (memberToDelete) {
+          setMembers(prev => [...prev, memberToDelete].sort((a, b) => a.id - b.id))
+        }
         const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
-        alert('刪除失敗：' + (errorData.error || '未知錯誤'))
+        setToast({ message: '刪除失敗：' + (errorData.error || '未知錯誤'), type: 'error' })
+        setTimeout(() => setToast(null), 4000)
       }
     } catch (error) {
       console.error('Error deleting member:', error)
-      alert('刪除失敗：網路錯誤或伺服器無回應')
+      // 失敗時恢復列表
+      if (memberToDelete) {
+        setMembers(prev => [...prev, memberToDelete].sort((a, b) => a.id - b.id))
+      }
+      setToast({ message: '刪除失敗：網路錯誤或伺服器無回應', type: 'error' })
+      setTimeout(() => setToast(null), 4000)
     }
   }
 
@@ -694,66 +715,104 @@ export default function AttendanceManagement() {
       if (editingMember) {
         // 更新會員
         if (!editingMember.name || editingMember.name.trim() === '') {
-          alert('請輸入會員姓名')
+          setToast({ message: '請輸入會員姓名', type: 'error' })
+          setTimeout(() => setToast(null), 3000)
           return
         }
 
-        const response = await fetch(`/api/members/${editingMember.id}`, {
+        // 樂觀更新：立即更新列表中的會員
+        const updatedMember = {
+          id: editingMember.id,
+          name: editingMember.name.trim(),
+          profession: editingMember.profession?.trim() || '',
+        }
+        setMembers(prev => prev.map(m => m.id === editingMember.id ? updatedMember : m))
+        
+        // 立即關閉彈窗
+        setShowMemberModal(false)
+        const savedEditingMember = editingMember
+        setEditingMember(null)
+
+        const response = await fetch(`/api/members/${savedEditingMember.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            name: editingMember.name.trim(),
-            profession: editingMember.profession?.trim() || '',
+            name: savedEditingMember.name.trim(),
+            profession: savedEditingMember.profession?.trim() || '',
           }),
         })
 
         if (response.ok) {
           const data = await response.json()
           if (data.success) {
-            alert('會員已成功更新')
-            setShowMemberModal(false)
-            setEditingMember(null)
-            loadData()
+            // 背景刷新數據確保同步
+            await loadData(false)
+            setToast({ message: '會員已成功更新', type: 'success' })
+            setTimeout(() => setToast(null), 3000)
           } else {
-            alert('更新失敗：' + (data.error || '未知錯誤'))
+            // 失敗時恢復原數據
+            setMembers(prev => prev.map(m => m.id === savedEditingMember.id ? savedEditingMember : m))
+            setToast({ message: '更新失敗：' + (data.error || '未知錯誤'), type: 'error' })
+            setTimeout(() => setToast(null), 4000)
           }
         } else {
+          // 失敗時恢復原數據
+          setMembers(prev => prev.map(m => m.id === savedEditingMember.id ? savedEditingMember : m))
           const errorData = await response.json().catch(() => ({ error: '更新失敗' }))
-          alert('更新失敗：' + (errorData.error || '未知錯誤'))
+          setToast({ message: '更新失敗：' + (errorData.error || '未知錯誤'), type: 'error' })
+          setTimeout(() => setToast(null), 4000)
         }
       } else {
         // 創建新會員
         // 驗證輸入
         if (!newMember.id || newMember.id.trim() === '') {
-          alert('請輸入會員編號')
+          setToast({ message: '請輸入會員編號', type: 'error' })
+          setTimeout(() => setToast(null), 3000)
           return
         }
 
         if (!newMember.name || newMember.name.trim() === '') {
-          alert('請輸入會員姓名')
+          setToast({ message: '請輸入會員姓名', type: 'error' })
+          setTimeout(() => setToast(null), 3000)
           return
         }
 
         const memberId = parseInt(newMember.id)
         if (isNaN(memberId) || memberId <= 0) {
-          alert('會員編號必須是正整數')
+          setToast({ message: '會員編號必須是正整數', type: 'error' })
+          setTimeout(() => setToast(null), 3000)
           return
         }
 
-        console.log('開始新增會員:', { id: memberId, name: newMember.name.trim(), profession: newMember.profession?.trim() || '' })
+        // 保存表單數據
+        const savedMemberData = {
+          id: memberId,
+          name: newMember.name.trim(),
+          profession: newMember.profession?.trim() || '',
+        }
+
+        // 樂觀更新：立即添加到列表
+        const newMemberObj: Member = {
+          id: memberId,
+          name: savedMemberData.name,
+          profession: savedMemberData.profession,
+        }
+        setMembers(prev => [...prev, newMemberObj].sort((a, b) => a.id - b.id))
+        
+        // 立即關閉彈窗並清空表單
+        setShowMemberModal(false)
+        setNewMember({ id: '', name: '', profession: '' })
+
+        console.log('開始新增會員:', savedMemberData)
         
         const response = await fetch('/api/members/create', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            id: memberId,
-            name: newMember.name.trim(),
-            profession: newMember.profession?.trim() || '',
-          }),
+          body: JSON.stringify(savedMemberData),
         })
 
         console.log('新增會員 API 響應:', { ok: response.ok, status: response.status })
@@ -763,27 +822,43 @@ export default function AttendanceManagement() {
           console.log('新增會員 API 數據:', data)
           
           if (data.success) {
-            alert('會員已成功新增')
-            setShowMemberModal(false)
-            setNewMember({ id: '', name: '', profession: '' })
-            // 確保數據刷新
+            // 背景刷新數據確保同步
             await loadData(false)
+            setToast({ message: '會員已成功新增', type: 'success' })
+            setTimeout(() => setToast(null), 3000)
             console.log('會員數據已刷新')
           } else {
+            // 失敗時從列表中移除
+            setMembers(prev => prev.filter(m => m.id !== memberId))
             const errorMessage = data.error || '未知錯誤'
             console.error('新增會員失敗:', errorMessage)
-            alert('新增失敗：' + errorMessage)
+            setToast({ message: '新增失敗：' + errorMessage, type: 'error' })
+            setTimeout(() => setToast(null), 4000)
           }
         } else {
+          // 失敗時從列表中移除
+          setMembers(prev => prev.filter(m => m.id !== memberId))
           const errorData = await response.json().catch(() => ({ error: '新增失敗' }))
           const errorMessage = errorData.error || '新增失敗'
           console.error('新增會員 API 錯誤:', { status: response.status, error: errorMessage })
-          alert('新增失敗：' + errorMessage)
+          setToast({ message: '新增失敗：' + errorMessage, type: 'error' })
+          setTimeout(() => setToast(null), 4000)
         }
       }
     } catch (error) {
       console.error('Error saving member:', error)
-      alert('操作失敗：網路錯誤或伺服器無回應')
+      // 如果是新增，失敗時從列表中移除
+      if (!editingMember) {
+        const memberId = parseInt(newMember.id)
+        if (!isNaN(memberId)) {
+          setMembers(prev => prev.filter(m => m.id !== memberId))
+        }
+      } else {
+        // 如果是編輯，恢復原數據
+        setMembers(prev => prev.map(m => m.id === editingMember.id ? editingMember : m))
+      }
+      setToast({ message: '操作失敗：網路錯誤或伺服器無回應', type: 'error' })
+      setTimeout(() => setToast(null), 4000)
     }
   }
 
