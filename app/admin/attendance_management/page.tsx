@@ -28,6 +28,16 @@ export default function AttendanceManagement() {
   const [members, setMembers] = useState<Member[]>([])
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
+  
+  // 過濾 vercel 相關文字的輔助函數
+  const filterVercelText = (text: string): string => {
+    return text
+      .replace(/vercel\.app/gi, '')
+      .replace(/vercel/gi, '')
+      .replace(/\.app/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
   // 初始化選中的日期為下一個週四
   const getInitialThursday = () => {
     const today = new Date()
@@ -756,8 +766,10 @@ export default function AttendanceManagement() {
       if (response.ok) {
         const data = await response.json()
         if (data.success) {
-          // 背景刷新數據確保同步
-          await loadData(false)
+          // 延遲背景刷新數據，確保樂觀更新先顯示
+          setTimeout(async () => {
+            await loadData(true) // 使用靜默模式，不顯示 loading
+          }, 500)
           setToast({ message: '會員已成功刪除', type: 'success' })
           setTimeout(() => setToast(null), 3000)
         } else {
@@ -765,7 +777,8 @@ export default function AttendanceManagement() {
           if (memberToDelete) {
             setMembers(prev => [...prev, memberToDelete].sort((a, b) => a.id - b.id))
           }
-          setToast({ message: '刪除失敗：' + (data.error || '未知錯誤'), type: 'error' })
+          const errorMsg = filterVercelText(data.error || '未知錯誤')
+          setToast({ message: '刪除失敗：' + errorMsg, type: 'error' })
           setTimeout(() => setToast(null), 4000)
         }
       } else {
@@ -774,7 +787,8 @@ export default function AttendanceManagement() {
           setMembers(prev => [...prev, memberToDelete].sort((a, b) => a.id - b.id))
         }
         const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
-        setToast({ message: '刪除失敗：' + (errorData.error || '未知錯誤'), type: 'error' })
+        const errorMsg = filterVercelText(errorData.error || '未知錯誤')
+        setToast({ message: '刪除失敗：' + errorMsg, type: 'error' })
         setTimeout(() => setToast(null), 4000)
       }
     } catch (error) {
@@ -900,15 +914,17 @@ export default function AttendanceManagement() {
           console.log('新增會員 API 數據:', data)
           
           if (data.success) {
-            // 背景刷新數據確保同步
-            await loadData(false)
+            // 延遲背景刷新數據，確保樂觀更新先顯示
+            setTimeout(async () => {
+              await loadData(true) // 使用靜默模式，不顯示 loading
+            }, 500)
             setToast({ message: '會員已成功新增', type: 'success' })
             setTimeout(() => setToast(null), 3000)
             console.log('會員數據已刷新')
           } else {
             // 失敗時從列表中移除
             setMembers(prev => prev.filter(m => m.id !== memberId))
-            const errorMessage = data.error || '未知錯誤'
+            const errorMessage = filterVercelText(data.error || '未知錯誤')
             console.error('新增會員失敗:', errorMessage)
             setToast({ message: '新增失敗：' + errorMessage, type: 'error' })
             setTimeout(() => setToast(null), 4000)
@@ -917,7 +933,7 @@ export default function AttendanceManagement() {
           // 失敗時從列表中移除
           setMembers(prev => prev.filter(m => m.id !== memberId))
           const errorData = await response.json().catch(() => ({ error: '新增失敗' }))
-          const errorMessage = errorData.error || '新增失敗'
+          const errorMessage = filterVercelText(errorData.error || '新增失敗')
           console.error('新增會員 API 錯誤:', { status: response.status, error: errorMessage })
           setToast({ message: '新增失敗：' + errorMessage, type: 'error' })
           setTimeout(() => setToast(null), 4000)
@@ -1419,7 +1435,9 @@ export default function AttendanceManagement() {
               <span className="text-2xl flex-shrink-0">
                 {toast.type === 'success' ? '✅' : '❌'}
               </span>
-              <span className="font-semibold">{toast.message}</span>
+              <span className="font-semibold">
+                {filterVercelText(toast.message)}
+              </span>
             </div>
           </div>
         </div>
