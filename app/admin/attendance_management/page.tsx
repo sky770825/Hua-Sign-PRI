@@ -1300,6 +1300,32 @@ export default function AttendanceManagement() {
     link.click()
   }
 
+  const handleSyncToSheets = async () => {
+    try {
+      setToast({ message: '正在同步到 Google Sheets...', type: 'success' })
+      setTimeout(() => setToast(null), 2000)
+      
+      const response = await fetch('/api/sync/sheets', {
+        method: 'POST',
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        setToast({ message: `成功同步 ${data.count} 筆會員資料到 Google Sheets`, type: 'success' })
+        setTimeout(() => setToast(null), 4000)
+      } else {
+        const errorMsg = filterVercelText(data.error || '同步失敗')
+        setToast({ message: '同步失敗：' + errorMsg, type: 'error' })
+        setTimeout(() => setToast(null), 4000)
+      }
+    } catch (error) {
+      console.error('同步到 Google Sheets 失敗:', error)
+      setToast({ message: '同步失敗：網路錯誤或伺服器無回應', type: 'error' })
+      setTimeout(() => setToast(null), 4000)
+    }
+  }
+
   const handleImportMembers = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -1925,6 +1951,13 @@ export default function AttendanceManagement() {
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-semibold text-sm"
                 >
                   📥 匯出會員
+                </button>
+                <button
+                  onClick={handleSyncToSheets}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold text-sm"
+                  title="同步會員資料到 Google Sheets"
+                >
+                  📊 同步到 Sheets
                 </button>
                 <button
                   onClick={() => {

@@ -4,6 +4,29 @@ import { insforge, TABLES } from '@/lib/insforge'
 // 標記為動態路由
 export const dynamic = 'force-dynamic'
 
+// 背景同步到 Google Sheets 的輔助函數
+async function syncToGoogleSheets() {
+  try {
+    // 只在環境變數設置時才同步
+    if (!process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+      return
+    }
+    
+    const { data: members } = await insforge.database
+      .from(TABLES.MEMBERS)
+      .select('id, name, profession')
+      .order('id', { ascending: true })
+    
+    if (members && members.length > 0) {
+      const { syncMembersToSheets } = await import('@/lib/google-sheets')
+      await syncMembersToSheets(members)
+    }
+  } catch (error) {
+    // 靜默失敗，不影響主要操作
+    console.warn('背景同步到 Google Sheets 失敗:', error)
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { id, name, profession } = await request.json()
@@ -114,6 +137,12 @@ export async function POST(request: Request) {
         { status: 500 }
       )
     }
+    
+    // 背景同步到 Google Sheets（不阻塞響應）
+    syncToGoogleSheets().catch(err => {
+      console.error('背景同步到 Google Sheets 失敗:', err)
+      // 不影響主要操作，只記錄錯誤
+    })
     
     return NextResponse.json({ 
       success: true, 
