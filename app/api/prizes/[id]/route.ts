@@ -342,44 +342,15 @@ export async function DELETE(
         prizeName: prize.name,
       })
       
-      const errorMessage = String(deleteError.message || '')
-      const errorCode = String((deleteError as any).code || '')
-      
-      // 檢查是否為外鍵約束錯誤
-      if (errorCode === '23503' || 
-          errorMessage.includes('foreign key') || 
-          errorMessage.includes('constraint') ||
-          errorMessage.includes('referenced')) {
-        return NextResponse.json(
-          { error: '無法刪除獎品：此獎品有中獎記錄，請先刪除相關中獎記錄。系統已嘗試自動刪除，但可能仍有其他引用。' },
-          { status: 400 }
-        )
-      }
-      
-      return NextResponse.json(
-        { error: `刪除獎品失敗：${errorMessage || '資料庫錯誤'} (錯誤碼: ${errorCode})` },
-        { status: 500 }
-      )
+      return apiError(`刪除獎品失敗：${handleDatabaseError(deleteError)}`, 500)
     }
 
     console.log('獎品刪除成功:', deletedPrize)
-    return NextResponse.json({ success: true, data: deletedPrize })
+    return apiSuccess(deletedPrize)
   } catch (error) {
     console.error('Error deleting prize:', error)
     const errorMessage = error instanceof Error ? error.message : '未知錯誤'
-    
-    // 檢查是否為外鍵約束錯誤
-    if (errorMessage.includes('foreign key') || errorMessage.includes('constraint')) {
-      return NextResponse.json(
-        { error: '無法刪除獎品：此獎品有中獎記錄，請先刪除相關中獎記錄。' },
-        { status: 400 }
-      )
-    }
-    
-    return NextResponse.json(
-      { error: `刪除獎品失敗：${errorMessage}` },
-      { status: 500 }
-    )
+    return apiError(`刪除獎品失敗：${handleDatabaseError(error)}`, 500)
   }
 }
 

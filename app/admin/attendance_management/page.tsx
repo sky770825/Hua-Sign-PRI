@@ -29,15 +29,6 @@ export default function AttendanceManagement() {
   const [checkins, setCheckins] = useState<CheckinRecord[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
   
-  // 過濾 vercel 相關文字的輔助函數
-  const filterVercelText = (text: string): string => {
-    return text
-      .replace(/vercel\.app/gi, '')
-      .replace(/vercel/gi, '')
-      .replace(/\.app/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-  }
   // 初始化選中的日期為下一個週四
   const getInitialThursday = () => {
     const today = new Date()
