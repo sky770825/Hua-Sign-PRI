@@ -163,7 +163,7 @@ export default function AttendanceManagement() {
       ])
 
       // 處理會員數據
-      let membersData = { members: [] }
+      let membersData: { members: Member[] } = { members: [] }
       if (membersRes.status === 'fulfilled' && membersRes.value.ok) {
         membersData = await membersRes.value.json()
       } else {
@@ -171,7 +171,7 @@ export default function AttendanceManagement() {
       }
 
       // 處理會議數據
-      let meetingsData = { meetings: [] }
+      let meetingsData: { meetings: Meeting[] } = { meetings: [] }
       if (meetingsRes.status === 'fulfilled' && meetingsRes.value.ok) {
         meetingsData = await meetingsRes.value.json()
       } else {
@@ -179,7 +179,7 @@ export default function AttendanceManagement() {
       }
 
       // 處理簽到數據
-      let checkinsData = { checkins: [] }
+      let checkinsData: { checkins: CheckinRecord[] } = { checkins: [] }
       if (checkinsRes.status === 'fulfilled' && checkinsRes.value.ok) {
         checkinsData = await checkinsRes.value.json()
       } else {
