@@ -3,6 +3,8 @@ import { insforge, TABLES } from '@/lib/insforge'
 import { apiError, handleDatabaseError } from '@/lib/api-utils'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
 
 export async function GET() {
   try {

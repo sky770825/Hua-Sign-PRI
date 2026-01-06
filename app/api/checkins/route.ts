@@ -4,6 +4,8 @@ import { apiError, handleDatabaseError } from '@/lib/api-utils'
 
 // 標記為動態路由（因為使用了 request.url）
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
+export const fetchCache = 'force-no-store'
 
 export async function GET(request: Request) {
   try {
