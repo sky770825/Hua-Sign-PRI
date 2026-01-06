@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: '⛧=Good Morning=⛧｜華地產線上鑽石分會⏃付出者收穫',
+  title: '華地產後台管理系統',
   description: '華地產線上鑽石分會簽到系統',
 }
 

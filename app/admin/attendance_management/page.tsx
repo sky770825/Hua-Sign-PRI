@@ -134,6 +134,7 @@ export default function AttendanceManagement() {
     probability: 1.0,
     image: null as File | null,
   })
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const fetchWithTimeout = useCallback(async (
     input: RequestInfo,
@@ -1180,6 +1181,24 @@ export default function AttendanceManagement() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-5 fade-in">
+          <div className={`px-6 py-4 rounded-lg shadow-2xl backdrop-blur-sm border-2 ${
+            toast.type === 'success' 
+              ? 'bg-green-500/95 border-green-400 text-white' 
+              : 'bg-red-500/95 border-red-400 text-white'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">
+                {toast.type === 'success' ? '✅' : '❌'}
+              </span>
+              <span className="font-semibold">{toast.message}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Header with gradient */}
       <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
@@ -2551,13 +2570,12 @@ export default function AttendanceManagement() {
                     if (data.success) {
                       // 背景更新列表
                       await loadPrizes()
-                      // 使用自動消失的成功提示
+                      // 顯示美觀的自動消失提示
                       const successMsg = wasEditing ? '獎品已成功更新' : '獎品已成功新增'
                       console.log('✅', successMsg, savedPrizeData.name)
-                      // 顯示輕量提示（可以考慮未來改用 toast 組件）
-                      setTimeout(() => {
-                        alert(successMsg)
-                      }, 100)
+                      setToast({ message: successMsg, type: 'success' })
+                      // 3秒後自動消失
+                      setTimeout(() => setToast(null), 3000)
                     } else {
                       // 失敗時重新打開彈窗並顯示錯誤
                       setShowPrizeModal(true)
@@ -2570,7 +2588,8 @@ export default function AttendanceManagement() {
                       if (wasEditing && currentEditingPrize) {
                         setEditingPrize(currentEditingPrize)
                       }
-                      alert('操作失敗：' + (data.error || '未知錯誤'))
+                      setToast({ message: '操作失敗：' + (data.error || '未知錯誤'), type: 'error' })
+                      setTimeout(() => setToast(null), 4000)
                     }
                   } else {
                     const errorData = await response.json().catch(() => ({ error: '操作失敗' }))
@@ -2589,11 +2608,11 @@ export default function AttendanceManagement() {
                     }
                     
                     // 檢查是否為速率限制錯誤
-                    if (response.status === 429 || errorMessage.includes('Too many requests') || errorMessage.includes('請求過於頻繁')) {
-                      alert('⚠️ 請求過於頻繁，請稍候 1-2 分鐘後再試上傳圖片')
-                    } else {
-                      alert('操作失敗：' + errorMessage)
-                    }
+                    const errorMsg = response.status === 429 || errorMessage.includes('Too many requests') || errorMessage.includes('請求過於頻繁')
+                      ? '⚠️ 請求過於頻繁，請稍候 1-2 分鐘後再試上傳圖片'
+                      : '操作失敗：' + errorMessage
+                    setToast({ message: errorMsg, type: 'error' })
+                    setTimeout(() => setToast(null), 4000)
                     console.error('Error saving prize:', errorData)
                   }
                 } catch (error) {
@@ -2612,11 +2631,11 @@ export default function AttendanceManagement() {
                     setEditingPrize(currentEditingPrize)
                   }
                   
-                  if (errorMessage.includes('Too many requests') || errorMessage.includes('rate limit')) {
-                    alert('⚠️ 請求過於頻繁，請稍候 1-2 分鐘後再試上傳圖片')
-                  } else {
-                    alert('操作失敗：' + errorMessage)
-                  }
+                  const errorMsg = errorMessage.includes('Too many requests') || errorMessage.includes('rate limit')
+                    ? '⚠️ 請求過於頻繁，請稍候 1-2 分鐘後再試上傳圖片'
+                    : '操作失敗：' + errorMessage
+                  setToast({ message: errorMsg, type: 'error' })
+                  setTimeout(() => setToast(null), 4000)
                 }
               }}
               className="space-y-4"
