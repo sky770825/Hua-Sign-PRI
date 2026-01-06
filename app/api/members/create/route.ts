@@ -56,23 +56,20 @@ export async function POST(request: Request) {
       return apiError(validation.error || '輸入驗證失敗', 400)
     }
 
-    // 檢查ID是否已存在
-    const { data: existing } = await insforge.database
+    // 檢查ID是否已存在（不使用 maybeSingle，直接檢查結果陣列）
+    const { data: existingMembers } = await insforge.database
       .from(TABLES.MEMBERS)
       .select('id')
       .eq('id', id)
-      .maybeSingle()
+      .limit(1)
 
-    if (existing) {
-      return NextResponse.json(
-        { error: 'Member ID already exists' },
-        { status: 400 }
-      )
+    if (existingMembers && existingMembers.length > 0) {
+      return apiError('會員編號已存在，請使用其他編號', 400)
     }
 
     console.log('創建會員:', { id, name, profession })
     
-    const { data, error } = await insforge.database
+    const { data: insertedData, error } = await insforge.database
       .from(TABLES.MEMBERS)
       .insert([{
         id,
@@ -80,7 +77,9 @@ export async function POST(request: Request) {
         profession: (profession || '').trim() || null,
       }])
       .select()
-      .single()
+
+    // 從插入結果中獲取第一個（應該只有一個）
+    const data = insertedData && insertedData.length > 0 ? insertedData[0] : null
 
     if (error) {
       console.error('Database error creating member:', {
