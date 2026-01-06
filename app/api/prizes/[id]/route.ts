@@ -32,17 +32,19 @@ export async function PUT(
       return apiError(validation.error || '輸入驗證失敗', 400)
     }
 
-    // 獲取現有獎品信息（使用 maybeSingle 避免找不到時拋出錯誤）
-    const { data: existingPrize, error: fetchError } = await insforge.database
+    // 獲取現有獎品信息（不使用 single/maybeSingle，直接檢查結果陣列）
+    const { data: prizes, error: fetchError } = await insforge.database
       .from(TABLES.PRIZES)
       .select('*')
       .eq('id', id)
-      .maybeSingle()
+      .limit(1)
 
     if (fetchError) {
       console.error('Error fetching prize:', fetchError)
       return apiError(`查詢獎品失敗：${handleDatabaseError(fetchError)}`, 500)
     }
+    
+    const existingPrize = prizes && prizes.length > 0 ? prizes[0] : null
     
     if (!existingPrize) {
       return apiError(`獎品不存在（ID：${id}），可能已被刪除`, 404)
@@ -257,16 +259,18 @@ export async function DELETE(
     
     console.log('刪除獎品:', { id })
 
-    const { data: prize, error: fetchError } = await insforge.database
+    const { data: prizes, error: fetchError } = await insforge.database
       .from(TABLES.PRIZES)
       .select('*')
       .eq('id', id)
-      .maybeSingle()
+      .limit(1)
 
     if (fetchError) {
       console.error('Error fetching prize:', { id, fetchError })
       return apiError(`查詢獎品失敗：${handleDatabaseError(fetchError)}`, 500)
     }
+    
+    const prize = prizes && prizes.length > 0 ? prizes[0] : null
     
     if (!prize) {
       console.warn('Prize not found:', { id })

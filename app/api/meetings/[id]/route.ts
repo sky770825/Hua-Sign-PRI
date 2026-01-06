@@ -75,12 +75,14 @@ export async function DELETE(
       return apiError('會議 ID 無效', 400)
     }
 
-    // 獲取會議信息（使用 maybeSingle 避免找不到時拋出錯誤）
-    const { data: meeting } = await insforge.database
+    // 獲取會議信息（不使用 single/maybeSingle，直接檢查結果陣列）
+    const { data: meetings } = await insforge.database
       .from(TABLES.MEETINGS)
       .select('date')
       .eq('id', id)
-      .maybeSingle()
+      .limit(1)
+    
+    const meeting = meetings && meetings.length > 0 ? meetings[0] : null
 
     console.log('刪除會議:', { id })
     
