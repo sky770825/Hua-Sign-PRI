@@ -914,31 +914,59 @@ export default function AttendanceManagement() {
 
         console.log('開始新增會員:', savedMemberData)
         
-        const response = await fetch('/api/members/create', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(savedMemberData),
-        })
+        let response;
+        try {
+          response = await fetch('/api/members/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(savedMemberData),
+          })
+        } catch (fetchError) {
+          console.error('新增會員請求失敗:', fetchError)
+          // 失敗時從列表中移除
+          setMembers(prev => prev.filter(m => m.id !== memberId))
+          await loadData(true)
+          setToast({ message: '新增失敗：網路錯誤，請檢查連線狀態', type: 'error' })
+          setTimeout(() => setToast(null), 4000)
+          return
+        }
 
         console.log('新增會員 API 響應:', { ok: response.ok, status: response.status })
 
         if (response.ok) {
-          const data = await response.json()
+          let data;
+          try {
+            data = await response.json()
+          } catch (jsonError) {
+            console.error('解析 API 響應失敗:', jsonError)
+            // 失敗時從列表中移除
+            setMembers(prev => prev.filter(m => m.id !== memberId))
+            await loadData(true)
+            setToast({ message: '新增失敗：伺服器響應格式錯誤', type: 'error' })
+            setTimeout(() => setToast(null), 4000)
+            return
+          }
+          
           console.log('新增會員 API 數據:', data)
           
-          if (data.success) {
-            // 前端已經樂觀更新，不再強制重抓，避免畫面閃爍
+          if (data.success && data.data) {
+            // 前端已經樂觀更新，但為了確保資料一致性，進行背景刷新
+            // 使用 setTimeout 延遲刷新，避免立即覆蓋樂觀更新
+            setTimeout(() => {
+              loadData(true).catch(err => console.error('背景刷新失敗:', err))
+            }, 1000)
+            
             setToast({ message: '會員已成功新增', type: 'success' })
             setTimeout(() => setToast(null), 3000)
-            console.log('會員新增成功')
+            console.log('會員新增成功:', data.data)
           } else {
             // 失敗時從列表中移除（靜默刷新）
             setMembers(prev => prev.filter(m => m.id !== memberId))
             await loadData(true)
-            const errorMessage = filterVercelText(data.error || '未知錯誤')
-            console.error('新增會員失敗:', errorMessage)
+            const errorMessage = filterVercelText(data.error || '新增失敗：未知錯誤')
+            console.error('新增會員失敗:', errorMessage, data)
             setToast({ message: '新增失敗：' + errorMessage, type: 'error' })
             setTimeout(() => setToast(null), 4000)
           }
@@ -946,10 +974,18 @@ export default function AttendanceManagement() {
           // 失敗時從列表中移除（靜默刷新）
           setMembers(prev => prev.filter(m => m.id !== memberId))
           await loadData(true)
-          const errorData = await response.json().catch(() => ({ error: '新增失敗' }))
-          const errorMessage = filterVercelText(errorData.error || '新增失敗')
-          console.error('新增會員 API 錯誤:', { status: response.status, error: errorMessage })
-          setToast({ message: '新增失敗：' + errorMessage, type: 'error' })
+          
+          let errorData;
+          try {
+            errorData = await response.json()
+          } catch (jsonError) {
+            console.error('解析錯誤響應失敗:', jsonError)
+            errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+          }
+          
+          const errorMessage = filterVercelText(errorData.error || `新增失敗：HTTP ${response.status}`)
+          console.error('新增會員 API 錯誤:', { status: response.status, error: errorMessage, errorData })
+          setToast({ message: errorMessage, type: 'error' })
           setTimeout(() => setToast(null), 4000)
         }
       }

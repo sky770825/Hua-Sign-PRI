@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
 
+// 標記為動態路由
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: Request) {
   try {
     const { id, name, profession } = await request.json()
@@ -102,10 +105,21 @@ export async function POST(request: Request) {
     }
 
     console.log('會員創建成功:', data)
+    
+    // 驗證返回的數據是否完整
+    if (!data || !data.id || !data.name) {
+      console.error('會員創建成功但返回數據不完整:', data)
+      return NextResponse.json(
+        { error: '新增會員失敗：資料庫返回數據不完整' },
+        { status: 500 }
+      )
+    }
+    
     return NextResponse.json({ 
       success: true, 
       data: data,
-      member: data // 同時返回 member 字段以確保兼容性
+      member: data, // 同時返回 member 字段以確保兼容性
+      id: data.id, // 明確返回 ID 以便前端驗證
     })
   } catch (error) {
     console.error('Error creating member:', error)
