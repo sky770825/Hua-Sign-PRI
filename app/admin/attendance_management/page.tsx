@@ -2444,17 +2444,36 @@ export default function AttendanceManagement() {
                   })
 
                   if (response.ok) {
-                    setShowPrizeModal(false)
-                    setEditingPrize(null)
-                    setNewPrize({ name: '', totalQuantity: 1, probability: 1.0, image: null })
-                    loadPrizes()
-                  } else {
                     const data = await response.json()
-                    alert(data.error || '操作失敗')
+                    if (data.success) {
+                      alert(editingPrize ? '獎品已成功更新' : '獎品已成功新增')
+                      setShowPrizeModal(false)
+                      setEditingPrize(null)
+                      setNewPrize({ name: '', totalQuantity: 1, probability: 1.0, image: null })
+                      loadPrizes()
+                    } else {
+                      alert('操作失敗：' + (data.error || '未知錯誤'))
+                    }
+                  } else {
+                    const errorData = await response.json().catch(() => ({ error: '操作失敗' }))
+                    const errorMessage = errorData.error || '操作失敗'
+                    
+                    // 檢查是否為速率限制錯誤
+                    if (response.status === 429 || errorMessage.includes('Too many requests') || errorMessage.includes('請求過於頻繁')) {
+                      alert('⚠️ 請求過於頻繁，請稍候 1-2 分鐘後再試上傳圖片')
+                    } else {
+                      alert('操作失敗：' + errorMessage)
+                    }
+                    console.error('Error saving prize:', errorData)
                   }
                 } catch (error) {
                   console.error('Error saving prize:', error)
-                  alert('操作失敗')
+                  const errorMessage = error instanceof Error ? error.message : '網路錯誤'
+                  if (errorMessage.includes('Too many requests') || errorMessage.includes('rate limit')) {
+                    alert('⚠️ 請求過於頻繁，請稍候 1-2 分鐘後再試上傳圖片')
+                  } else {
+                    alert('操作失敗：' + errorMessage)
+                  }
                 }
               }}
               className="space-y-4"
