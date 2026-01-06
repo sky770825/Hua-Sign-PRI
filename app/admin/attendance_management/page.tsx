@@ -543,7 +543,11 @@ export default function AttendanceManagement() {
       
       if (data.success) {
         // 前端已經樂觀更新為已簽到，這裡不再強制重抓，避免畫面一閃又還原
-        // 背景有其它定時刷新機制會同步資料
+        // 延遲背景刷新，確保簽到狀態保持
+        setTimeout(() => {
+          loadData(true, selectedDate).catch(err => console.error('背景刷新失敗:', err))
+        }, 2000)
+        
         setToast({ message: '簽到成功！', type: 'success' })
         setTimeout(() => setToast(null), 3000)
       } else {
@@ -760,6 +764,11 @@ export default function AttendanceManagement() {
       
       if (data.success) {
         // 前端已經樂觀更新，不再強制重抓，避免畫面閃爍
+        // 延遲背景刷新，確保更新狀態保持
+        setTimeout(() => {
+          loadData(true, selectedDate).catch(err => console.error('背景刷新失敗:', err))
+        }, 2000)
+        
         setToast({ message: '簽到記錄已成功更新', type: 'success' })
         setTimeout(() => setToast(null), 3000)
       } else {
@@ -804,6 +813,11 @@ export default function AttendanceManagement() {
         
         if (data.success && (data.deleted !== false)) {
           // 前端已經將會員從列表中移除，這裡不再強制重抓，避免列表又被還原
+          // 延遲背景刷新，確保刪除狀態保持
+          setTimeout(() => {
+            loadData(true).catch(err => console.error('背景刷新失敗:', err))
+          }, 2000)
+          
           setToast({ message: '會員已成功刪除', type: 'success' })
           setTimeout(() => setToast(null), 3000)
         } else {
