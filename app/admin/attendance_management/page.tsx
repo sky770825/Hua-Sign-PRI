@@ -194,21 +194,35 @@ export default function AttendanceManagement() {
       const todayMeeting = meetingsData.meetings?.find((m: Meeting) => m.date === targetDate)
       setSelectedMeeting(todayMeeting || null)
 
-      // 獲取每個會議的簽到人數（優化：只獲取最近 5 個會議，避免過多請求導致載入過久）
+      // 獲取每個會議的簽到人數（優化：只獲取最近 3 個會議，進一步減少請求數量）
       const stats: Record<string, number> = {}
-      const meetingDates = (meetingsData.meetings || []).slice(-5).map((m: Meeting) => m.date)
+      const meetingDates = (meetingsData.meetings || []).slice(-3).map((m: Meeting) => m.date)
       
-      // 並行獲取會議的簽到數據（限制為最近 5 個會議，使用更短的超時）
-      const checkinPromises: Array<Promise<{ date: string; checkins: CheckinRecord[] }>> = meetingDates.map(async (date: string) => {
+      // 並行獲取會議的簽到數據（限制為最近 3 個會議，使用更短的超時）
+      // 添加延遲以避免同時發送過多請求
+      const checkinPromises: Array<Promise<{ date: string; checkins: CheckinRecord[] }>> = meetingDates.map(async (date: string, index: number) => {
+        // 為每個請求添加小延遲，避免同時發送
+        if (index > 0) {
+          await new Promise(resolve => setTimeout(resolve, index * 200)) // 每個請求間隔200ms
+        }
+        
         try {
           const checkinsRes = await fetchWithTimeout(`/api/checkins?date=${date}`, undefined, 4000)
           if (!checkinsRes.ok) {
+            // 檢查是否為速率限制錯誤
+            if (checkinsRes.status === 429) {
+              throw new Error('Too many requests')
+            }
             return { date, checkins: [] as CheckinRecord[] }
           }
           const checkinsData = await checkinsRes.json()
           return { date, checkins: (checkinsData.checkins || []) as CheckinRecord[] }
         } catch (err) {
-          // 請求失敗時返回空數組，不影響頁面顯示
+          // 如果是速率限制錯誤，重新拋出
+          if (err instanceof Error && err.message.includes('Too many requests')) {
+            throw err
+          }
+          // 其他錯誤返回空數組，不影響頁面顯示
           return { date, checkins: [] as CheckinRecord[] }
         }
       })
@@ -255,13 +269,21 @@ export default function AttendanceManagement() {
     } catch (error) {
       console.error('Error loading data:', error)
       if (!silent) {
-        // 只在非静默模式下显示错误提示
+        // 只在非靜默模式下顯示錯誤提示
         const errorMessage = error instanceof Error ? error.message : '載入資料失敗'
         if (errorMessage.includes('aborted') || errorMessage.includes('timeout')) {
           console.warn('Request timeout, will retry on next refresh')
+        } else if (errorMessage.includes('Too many requests') || 
+                   errorMessage.includes('rate limit') ||
+                   errorMessage.includes('429')) {
+          // 速率限制錯誤，顯示提示但不中斷操作
+          console.warn('Rate limit detected, please wait before refreshing')
+          if (!silent) {
+            alert('請求過於頻繁，請稍候再試')
+          }
         } else {
           console.error('Load data error:', errorMessage)
-          // 不显示alert，避免干扰用户
+          // 不顯示alert，避免干擾用戶
         }
       }
     } finally {
@@ -316,18 +338,50 @@ export default function AttendanceManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // 只在掛載時執行一次
 
-  // 背景自动刷新数据（每30秒）- 仅在出席管理标签页，不显示加载状态
+  // 背景自動刷新數據（每60秒）- 僅在出席管理標籤頁，不顯示加載狀態
+  // 添加速率限制檢測，避免觸發 "Too many requests" 錯誤
   useEffect(() => {
     if (activeTab === 'attendance') {
+      let retryCount = 0
+      const maxRetries = 3
+      let isPaused = false
+      
       const interval = setInterval(() => {
-        // 背景静默刷新，不显示loading状态
+        // 如果已暫停（遇到速率限制），跳過本次刷新
+        if (isPaused) {
+          console.log('Background refresh paused due to rate limiting')
+          return
+        }
+        
+        // 背景靜默刷新，不顯示loading狀態
         loadData(true).catch(err => {
           console.error('Background refresh error:', err)
+          const errorMessage = err instanceof Error ? err.message : String(err)
+          
+          // 檢測速率限制錯誤
+          if (errorMessage.includes('Too many requests') || 
+              errorMessage.includes('rate limit') ||
+              errorMessage.includes('429')) {
+            console.warn('Rate limit detected, pausing background refresh')
+            isPaused = true
+            retryCount++
+            
+            // 如果重試次數未達上限，在5分鐘後恢復
+            if (retryCount < maxRetries) {
+              setTimeout(() => {
+                isPaused = false
+                console.log('Resuming background refresh after rate limit cooldown')
+              }, 5 * 60 * 1000) // 5分鐘後恢復
+            } else {
+              console.warn('Max retries reached, background refresh permanently paused')
+            }
+          }
         })
-      }, 30000)
+      }, 60000) // 改為60秒刷新一次，減少請求頻率
+      
       return () => clearInterval(interval)
     }
-  }, [activeTab]) // 移除 loadData 依赖，避免无限循环
+  }, [activeTab]) // 移除 loadData 依賴，避免無限循環
 
   // 获取下一个周四的日期
   const getNextThursday = (): string => {
