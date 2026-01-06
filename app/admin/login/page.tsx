@@ -18,8 +18,14 @@ export default function AdminLogin() {
     await new Promise(resolve => setTimeout(resolve, 300))
     
     if (password === 'h123') {
-      localStorage.setItem('adminLoggedIn', 'true')
-      router.push('/admin/attendance_management')
+      // 確保在客戶端設置 localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('adminLoggedIn', 'true')
+        // 使用 window.location 確保完整重定向
+        window.location.href = '/admin/attendance_management'
+      } else {
+        router.push('/admin/attendance_management')
+      }
     } else {
       setError('密碼錯誤')
       setLoading(false)

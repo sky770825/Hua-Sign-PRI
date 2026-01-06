@@ -257,15 +257,20 @@ export default function AttendanceManagement() {
   }, [activeTab, loadPrizes])
 
   useEffect(() => {
-    // 检查登录状态
-    const loggedIn = localStorage.getItem('adminLoggedIn')
-    if (loggedIn !== 'true') {
-      setLoading(false)
-      router.push('/admin/login')
+    // 檢查登入狀態（確保在客戶端執行）
+    if (typeof window === 'undefined') {
       return
     }
 
-    // 只在组件挂载时加载一次，避免无限循环
+    const loggedIn = localStorage.getItem('adminLoggedIn')
+    if (loggedIn !== 'true') {
+      setLoading(false)
+      // 使用 window.location 確保完整重定向
+      window.location.href = '/admin/login'
+      return
+    }
+
+    // 只在組件掛載時加載一次，避免無限循環
     let mounted = true
     const fetchData = async () => {
       if (mounted) {
@@ -278,7 +283,7 @@ export default function AttendanceManagement() {
       mounted = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // 只在挂载时执行一次
+  }, []) // 只在掛載時執行一次
 
   // 背景自动刷新数据（每30秒）- 仅在出席管理标签页，不显示加载状态
   useEffect(() => {
