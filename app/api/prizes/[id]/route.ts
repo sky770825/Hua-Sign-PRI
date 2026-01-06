@@ -259,6 +259,42 @@ export async function DELETE(
       )
     }
 
+    // 檢查是否有中獎記錄引用此獎品
+    const { data: winners, error: winnersError } = await insforge.database
+      .from(TABLES.LOTTERY_WINNERS)
+      .select('id')
+      .eq('prize_id', id)
+      .limit(1)
+
+    if (winnersError) {
+      console.warn('Error checking winners:', winnersError)
+      // 繼續嘗試刪除，如果真的有外鍵約束，資料庫會阻止
+    }
+
+    if (winners && winners.length > 0) {
+      console.log('獎品有中獎記錄，無法刪除:', { 
+        id, 
+        prizeName: prize.name,
+        winnerCount: winners.length 
+      })
+      
+      // 先刪除相關的中獎記錄
+      const { error: deleteWinnersError } = await insforge.database
+        .from(TABLES.LOTTERY_WINNERS)
+        .delete()
+        .eq('prize_id', id)
+      
+      if (deleteWinnersError) {
+        console.error('Error deleting winners:', deleteWinnersError)
+        return NextResponse.json(
+          { error: `無法刪除獎品：此獎品有 ${winners.length} 筆中獎記錄，且無法自動刪除。請先手動刪除相關中獎記錄。` },
+          { status: 400 }
+        )
+      }
+      
+      console.log('相關中獎記錄已刪除，繼續刪除獎品')
+    }
+
     // 刪除圖片文件（使用服務端客戶端）
     if (prize.image_key) {
       try {
@@ -269,6 +305,8 @@ export async function DELETE(
         if (removeError) {
           console.warn('Failed to remove image:', removeError)
           // 繼續刪除獎品，即使圖片刪除失敗
+        } else {
+          console.log('圖片已刪除')
         }
       } catch (removeException) {
         console.warn('Exception removing image:', removeException)
@@ -276,6 +314,7 @@ export async function DELETE(
       }
     }
 
+    // 刪除獎品
     const { data: deletedPrize, error: deleteError } = await insforge.database
       .from(TABLES.PRIZES)
       .delete()
@@ -287,11 +326,27 @@ export async function DELETE(
         error: deleteError,
         message: deleteError.message,
         code: (deleteError as any).code,
+        details: (deleteError as any).details,
         id,
+        prizeName: prize.name,
       })
       
+      const errorMessage = String(deleteError.message || '')
+      const errorCode = String((deleteError as any).code || '')
+      
+      // 檢查是否為外鍵約束錯誤
+      if (errorCode === '23503' || 
+          errorMessage.includes('foreign key') || 
+          errorMessage.includes('constraint') ||
+          errorMessage.includes('referenced')) {
+        return NextResponse.json(
+          { error: '無法刪除獎品：此獎品有中獎記錄，請先刪除相關中獎記錄。系統已嘗試自動刪除，但可能仍有其他引用。' },
+          { status: 400 }
+        )
+      }
+      
       return NextResponse.json(
-        { error: `刪除獎品失敗：${deleteError.message || '資料庫錯誤'}` },
+        { error: `刪除獎品失敗：${errorMessage || '資料庫錯誤'} (錯誤碼: ${errorCode})` },
         { status: 500 }
       )
     }
@@ -301,6 +356,15 @@ export async function DELETE(
   } catch (error) {
     console.error('Error deleting prize:', error)
     const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    
+    // 檢查是否為外鍵約束錯誤
+    if (errorMessage.includes('foreign key') || errorMessage.includes('constraint')) {
+      return NextResponse.json(
+        { error: '無法刪除獎品：此獎品有中獎記錄，請先刪除相關中獎記錄。' },
+        { status: 400 }
+      )
+    }
+    
     return NextResponse.json(
       { error: `刪除獎品失敗：${errorMessage}` },
       { status: 500 }
