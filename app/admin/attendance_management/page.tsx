@@ -11,8 +11,8 @@ interface Member {
 
 interface CheckinRecord {
   member_id: number
-  checkin_time: string
-  message: string
+  checkin_time: string | null
+  message: string | null
   status: string
   name: string
 }
@@ -470,6 +470,21 @@ export default function AttendanceManagement() {
     }
 
     setActionLoading(prev => ({ ...prev, [key]: true }))
+    
+    // 樂觀更新：立即更新簽到狀態
+    const member = members.find(m => m.id === memberId)
+    const optimisticCheckin: CheckinRecord = {
+      member_id: memberId,
+      checkin_time: new Date().toISOString(),
+      message: '管理員手動簽到',
+      status: status || 'present',
+      name: member?.name || '',
+    }
+    setCheckins(prev => {
+      const filtered = prev.filter(c => c.member_id !== memberId || c.checkin_time?.split('T')[0] !== selectedDate)
+      return [...filtered, optimisticCheckin]
+    })
+    
     try {
       console.log('開始手動簽到:', { memberId, date: selectedDate, status })
       
@@ -490,7 +505,11 @@ export default function AttendanceManagement() {
         const errorData = await response.json().catch(() => ({ error: '簽到失敗' }))
         const errorMessage = errorData.error || '簽到失敗'
         console.error('簽到失敗:', { status: response.status, error: errorMessage })
-        alert(`簽到失敗：${errorMessage}`)
+        
+        // 失敗時恢復原狀態
+        await loadData(false, selectedDate)
+        setToast({ message: `簽到失敗：${errorMessage}`, type: 'error' })
+        setTimeout(() => setToast(null), 4000)
         return
       }
 
@@ -498,15 +517,24 @@ export default function AttendanceManagement() {
       console.log('簽到響應:', data)
       
       if (data.success) {
-        alert('簽到成功！')
+        // 背景刷新數據確保同步
         await loadData(false, selectedDate)
+        setToast({ message: '簽到成功！', type: 'success' })
+        setTimeout(() => setToast(null), 3000)
       } else {
-        alert('簽到失敗：' + (data.error || '未知錯誤'))
+        // 失敗時恢復原狀態
+        await loadData(false, selectedDate)
+        setToast({ message: '簽到失敗：' + (data.error || '未知錯誤'), type: 'error' })
+        setTimeout(() => setToast(null), 4000)
       }
     } catch (error) {
       console.error('Error checking in:', error)
       const errorMessage = error instanceof Error ? error.message : '簽到失敗'
-      alert(`簽到失敗：${errorMessage}`)
+      
+      // 失敗時恢復原狀態
+      await loadData(false, selectedDate)
+      setToast({ message: `簽到失敗：${errorMessage}`, type: 'error' })
+      setTimeout(() => setToast(null), 4000)
     } finally {
       setActionLoading(prev => ({ ...prev, [key]: false }))
     }
@@ -514,6 +542,10 @@ export default function AttendanceManagement() {
 
   const handleDeleteCheckin = async (memberId: number) => {
     if (!confirm('確定要刪除此簽到記錄嗎？')) return
+
+    // 樂觀更新：立即從列表中移除
+    const checkinToDelete = checkins.find(c => c.member_id === memberId && c.checkin_time?.split('T')[0] === selectedDate)
+    setCheckins(prev => prev.filter(c => !(c.member_id === memberId && c.checkin_time?.split('T')[0] === selectedDate)))
 
     try {
       console.log('刪除簽到記錄:', { memberId, date: selectedDate })
@@ -530,10 +562,15 @@ export default function AttendanceManagement() {
       })
 
       if (!response.ok) {
+        // 失敗時恢復
+        if (checkinToDelete) {
+          setCheckins(prev => [...prev, checkinToDelete])
+        }
         const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
         const errorMessage = errorData.error || '刪除失敗'
         console.error('刪除簽到記錄失敗:', { status: response.status, error: errorMessage })
-        alert(`刪除失敗：${errorMessage}`)
+        setToast({ message: `刪除失敗：${errorMessage}`, type: 'error' })
+        setTimeout(() => setToast(null), 4000)
         return
       }
 
@@ -541,15 +578,27 @@ export default function AttendanceManagement() {
       console.log('刪除簽到記錄響應:', data)
       
       if (data.success) {
-        alert('簽到記錄已成功刪除')
+        // 背景刷新數據確保同步
         await loadData(false, selectedDate)
+        setToast({ message: '簽到記錄已成功刪除', type: 'success' })
+        setTimeout(() => setToast(null), 3000)
       } else {
-        alert('刪除失敗：' + (data.error || '未知錯誤'))
+        // 失敗時恢復
+        if (checkinToDelete) {
+          setCheckins(prev => [...prev, checkinToDelete])
+        }
+        setToast({ message: '刪除失敗：' + (data.error || '未知錯誤'), type: 'error' })
+        setTimeout(() => setToast(null), 4000)
       }
     } catch (error) {
       console.error('Error deleting checkin:', error)
+      // 失敗時恢復
+      if (checkinToDelete) {
+        setCheckins(prev => [...prev, checkinToDelete])
+      }
       const errorMessage = error instanceof Error ? error.message : '刪除失敗'
-      alert(`刪除失敗：${errorMessage}`)
+      setToast({ message: `刪除失敗：${errorMessage}`, type: 'error' })
+      setTimeout(() => setToast(null), 4000)
     }
   }
 
@@ -613,11 +662,30 @@ export default function AttendanceManagement() {
   const handleSaveCheckinEdit = async () => {
     if (!editingCheckin) return
 
+    // 樂觀更新：立即更新簽到記錄
+    const member = members.find(m => m.id === editingCheckin.memberId)
+    const updatedCheckin: CheckinRecord = {
+      member_id: editingCheckin.memberId,
+      checkin_time: new Date().toISOString(),
+      message: (editingCheckin.message.trim() || null) as string | null,
+      status: 'present',
+      name: member?.name || '',
+    }
+    setCheckins(prev => prev.map(c => 
+      c.member_id === editingCheckin.memberId && c.checkin_time?.split('T')[0] === selectedDate
+        ? updatedCheckin
+        : c
+    ))
+    
+    // 立即關閉彈窗
+    const savedEditingCheckin = editingCheckin
+    setEditingCheckin(null)
+
     try {
       console.log('更新簽到記錄:', { 
-        memberId: editingCheckin.memberId, 
+        memberId: savedEditingCheckin.memberId, 
         date: selectedDate, 
-        message: editingCheckin.message 
+        message: savedEditingCheckin.message 
       })
       
       const response = await fetch('/api/checkin', {
@@ -626,18 +694,21 @@ export default function AttendanceManagement() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          memberId: editingCheckin.memberId,
+          memberId: savedEditingCheckin.memberId,
           date: selectedDate,
-          message: editingCheckin.message.trim() || null,
+          message: savedEditingCheckin.message.trim() || null,
           status: 'present',
         }),
       })
 
       if (!response.ok) {
+        // 失敗時恢復
+        await loadData(false, selectedDate)
         const errorData = await response.json().catch(() => ({ error: '更新失敗' }))
         const errorMessage = errorData.error || '更新失敗'
         console.error('更新簽到記錄失敗:', { status: response.status, error: errorMessage })
-        alert(`更新失敗：${errorMessage}`)
+        setToast({ message: `更新失敗：${errorMessage}`, type: 'error' })
+        setTimeout(() => setToast(null), 4000)
         return
       }
 
@@ -645,16 +716,23 @@ export default function AttendanceManagement() {
       console.log('更新簽到記錄響應:', data)
       
       if (data.success) {
-        alert('簽到記錄已成功更新')
-        setEditingCheckin(null)
+        // 背景刷新數據確保同步
         await loadData(false, selectedDate)
+        setToast({ message: '簽到記錄已成功更新', type: 'success' })
+        setTimeout(() => setToast(null), 3000)
       } else {
-        alert('更新失敗：' + (data.error || '未知錯誤'))
+        // 失敗時恢復
+        await loadData(false, selectedDate)
+        setToast({ message: '更新失敗：' + (data.error || '未知錯誤'), type: 'error' })
+        setTimeout(() => setToast(null), 4000)
       }
     } catch (error) {
       console.error('Error updating checkin:', error)
+      // 失敗時恢復
+      await loadData(false, selectedDate)
       const errorMessage = error instanceof Error ? error.message : '更新失敗'
-      alert(`更新失敗：${errorMessage}`)
+      setToast({ message: `更新失敗：${errorMessage}`, type: 'error' })
+      setTimeout(() => setToast(null), 4000)
     }
   }
 
@@ -950,14 +1028,36 @@ export default function AttendanceManagement() {
   // 批量操作
   const handleBatchCheckin = async () => {
     if (selectedMembers.length === 0) {
-      alert('請選擇要簽到的會員')
+      setToast({ message: '請選擇要簽到的會員', type: 'error' })
+      setTimeout(() => setToast(null), 3000)
       return
     }
 
     if (!confirm(`確定要為 ${selectedMembers.length} 位會員進行批量簽到嗎？`)) return
 
+    // 樂觀更新：立即更新所有選中會員的簽到狀態
+    const selectedMemberIds = [...selectedMembers]
+    selectedMemberIds.forEach(memberId => {
+      const member = members.find(m => m.id === memberId)
+      const optimisticCheckin: CheckinRecord = {
+        member_id: memberId,
+        checkin_time: new Date().toISOString(),
+        message: '管理員批量簽到',
+        status: 'present',
+        name: member?.name || '',
+      }
+      setCheckins(prev => {
+        const filtered = prev.filter(c => c.member_id !== memberId || c.checkin_time?.split('T')[0] !== selectedDate)
+        return [...filtered, optimisticCheckin]
+      })
+    })
+    
+    setSelectedMembers([])
+
     try {
-      const promises = selectedMembers.map(memberId =>
+      console.log('開始批量簽到:', { count: selectedMemberIds.length, date: selectedDate })
+      
+      const promises = selectedMemberIds.map(memberId =>
         fetch('/api/checkin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -967,31 +1067,68 @@ export default function AttendanceManagement() {
             message: '管理員批量簽到',
             status: 'present',
           }),
+        }).then(async (response) => {
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: '簽到失敗' }))
+            throw new Error(`會員 ${memberId}: ${errorData.error || '簽到失敗'}`)
+          }
+          return response.json()
         })
       )
 
-      await Promise.all(promises)
-      setSelectedMembers([])
-      loadData()
-      alert('批量簽到成功！')
+      const results = await Promise.allSettled(promises)
+      const failed = results.filter(r => r.status === 'rejected')
+      
+      // 背景刷新數據確保同步
+      await loadData(false, selectedDate)
+      
+      if (failed.length > 0) {
+        console.error('批量簽到部分失敗:', failed)
+        const errorMessages = failed.map((f: any) => f.reason?.message || '未知錯誤').join('、')
+        setToast({ 
+          message: `批量簽到完成，但有 ${failed.length} 位會員簽到失敗：${errorMessages}`, 
+          type: 'error' 
+        })
+        setTimeout(() => setToast(null), 5000)
+      } else {
+        setToast({ message: `批量簽到成功！已為 ${selectedMemberIds.length} 位會員簽到`, type: 'success' })
+        setTimeout(() => setToast(null), 3000)
+      }
     } catch (error) {
       console.error('Error batch checking in:', error)
-      alert('批量簽到失敗')
+      // 失敗時恢復
+      await loadData(false, selectedDate)
+      setToast({ 
+        message: '批量簽到失敗：' + (error instanceof Error ? error.message : '未知錯誤'), 
+        type: 'error' 
+      })
+      setTimeout(() => setToast(null), 4000)
     }
   }
 
   const handleBatchDelete = async () => {
     if (selectedMembers.length === 0) {
-      alert('請選擇要刪除的簽到記錄')
+      setToast({ message: '請選擇要刪除的簽到記錄', type: 'error' })
+      setTimeout(() => setToast(null), 3000)
       return
     }
 
     if (!confirm(`確定要刪除 ${selectedMembers.length} 筆簽到記錄嗎？`)) return
 
+    // 樂觀更新：立即從列表中移除所有選中的簽到記錄
+    const selectedMemberIds = [...selectedMembers]
+    const checkinsToDelete = checkins.filter(c => 
+      selectedMemberIds.includes(c.member_id) && c.checkin_time?.split('T')[0] === selectedDate
+    )
+    setCheckins(prev => prev.filter(c => 
+      !(selectedMemberIds.includes(c.member_id) && c.checkin_time?.split('T')[0] === selectedDate)
+    ))
+    setSelectedMembers([])
+
     try {
-      console.log('開始批量刪除簽到記錄:', { count: selectedMembers.length, date: selectedDate })
+      console.log('開始批量刪除簽到記錄:', { count: selectedMemberIds.length, date: selectedDate })
       
-      const promises = selectedMembers.map(memberId =>
+      const promises = selectedMemberIds.map(memberId =>
         fetch('/api/checkin/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1008,19 +1145,33 @@ export default function AttendanceManagement() {
       const results = await Promise.allSettled(promises)
       const failed = results.filter(r => r.status === 'rejected')
       
-      if (failed.length > 0) {
-        console.error('批量刪除部分失敗:', failed)
-        const errorMessages = failed.map((f: any) => f.reason?.message || '未知錯誤').join('\n')
-        alert(`批量刪除完成，但有 ${failed.length} 筆記錄刪除失敗：\n${errorMessages}`)
-      } else {
-        alert(`批量刪除成功！已刪除 ${selectedMembers.length} 筆簽到記錄`)
-      }
-      
-      setSelectedMembers([])
+      // 背景刷新數據確保同步
       await loadData(false, selectedDate)
+      
+      if (failed.length > 0) {
+        // 失敗時恢復
+        setCheckins(prev => [...prev, ...checkinsToDelete])
+        console.error('批量刪除部分失敗:', failed)
+        const errorMessages = failed.map((f: any) => f.reason?.message || '未知錯誤').join('、')
+        setToast({ 
+          message: `批量刪除完成，但有 ${failed.length} 筆記錄刪除失敗：${errorMessages}`, 
+          type: 'error' 
+        })
+        setTimeout(() => setToast(null), 5000)
+      } else {
+        setToast({ message: `批量刪除成功！已刪除 ${selectedMemberIds.length} 筆簽到記錄`, type: 'success' })
+        setTimeout(() => setToast(null), 3000)
+      }
     } catch (error) {
       console.error('Error batch deleting:', error)
-      alert('批量刪除失敗：' + (error instanceof Error ? error.message : '未知錯誤'))
+      // 失敗時恢復
+      setCheckins(prev => [...prev, ...checkinsToDelete])
+      await loadData(false, selectedDate)
+      setToast({ 
+        message: '批量刪除失敗：' + (error instanceof Error ? error.message : '未知錯誤'), 
+        type: 'error' 
+      })
+      setTimeout(() => setToast(null), 4000)
     }
   }
 
