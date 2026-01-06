@@ -1,7 +1,7 @@
 // 測試會員刪除功能
 // 使用 Node.js 內建的 fetch (Node 18+)
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = 'https://hua-sign-pri.vercel.app';
 
 async function testMemberDelete() {
   console.log('🧪 開始測試會員刪除功能...\n');
@@ -92,7 +92,7 @@ async function testMemberDelete() {
 
     // 5. 測試結果總結
     console.log('\n📊 測試結果總結:');
-    if (!member1After) {
+    if (!memberAfter) {
       console.log('✅ 所有測試通過！會員刪除功能正常運作。');
     } else {
       console.log('❌ 測試失敗：會員刪除功能有問題。');
