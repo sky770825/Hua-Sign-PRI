@@ -534,8 +534,8 @@ export default function AttendanceManagement() {
       console.log('簽到響應:', data)
       
       if (data.success) {
-        // 背景靜默刷新數據（不顯示全頁 loading），確保與資料庫同步
-        await loadData(true, selectedDate)
+        // 前端已經樂觀更新為已簽到，這裡不再強制重抓，避免畫面一閃又還原
+        // 背景有其它定時刷新機制會同步資料
         setToast({ message: '簽到成功！', type: 'success' })
         setTimeout(() => setToast(null), 3000)
       } else {
@@ -773,10 +773,7 @@ export default function AttendanceManagement() {
       if (response.ok) {
         const data = await response.json()
         if (data.success) {
-          // 延遲背景刷新數據，確保樂觀更新先顯示
-          setTimeout(async () => {
-            await loadData(true) // 使用靜默模式，不顯示 loading
-          }, 500)
+          // 前端已經將會員從列表中移除，這裡不再強制重抓，避免列表又被還原
           setToast({ message: '會員已成功刪除', type: 'success' })
           setTimeout(() => setToast(null), 3000)
         } else {
