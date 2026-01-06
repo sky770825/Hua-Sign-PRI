@@ -104,7 +104,7 @@ export async function DELETE(
 ) {
   try {
     const id = parseInt(params.id)
-    console.log('刪除會員:', { id })
+    console.log('刪除會員 v2:', { id })
 
     // 檢查會員是否存在（不使用 single/maybeSingle，直接檢查結果陣列）
     const { data: members, error: fetchError } = await insforge.database
