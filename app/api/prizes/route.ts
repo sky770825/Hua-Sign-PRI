@@ -225,6 +225,8 @@ export async function POST(request: Request) {
     }
 
     // 插入獎品資料
+    console.log('創建獎品:', { name, totalQuantity, probability, imageUrl: !!imageUrl })
+    
     const { data: prize, error: insertError } = await insforge.database
       .from(TABLES.PRIZES)
       .insert([{
@@ -239,16 +241,25 @@ export async function POST(request: Request) {
       .single()
 
     if (insertError) {
-      console.error('Error creating prize:', insertError)
+      console.error('Error creating prize:', {
+        error: insertError,
+        message: insertError.message,
+        code: (insertError as any).code,
+        details: (insertError as any).details,
+        name,
+      })
+      
       return NextResponse.json(
-        { error: 'Failed to create prize' },
+        { error: `新增獎品失敗：${insertError.message || '資料庫錯誤'}` },
         { status: 500 }
       )
     }
 
+    console.log('獎品創建成功:', prize)
     return NextResponse.json({ 
       success: true, 
-      id: prize?.id 
+      id: prize?.id,
+      data: prize
     })
   } catch (error) {
     console.error('Error creating prize:', error)

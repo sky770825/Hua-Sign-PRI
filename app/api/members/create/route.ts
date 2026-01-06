@@ -51,27 +51,49 @@ export async function POST(request: Request) {
       )
     }
 
-    const { error } = await insforge.database
+    console.log('創建會員:', { id, name, profession })
+    
+    const { data, error } = await insforge.database
       .from(TABLES.MEMBERS)
       .insert([{
         id,
         name: name.trim(),
         profession: (profession || '').trim() || null,
       }])
+      .select()
 
     if (error) {
-      console.error('Database error creating member:', error)
+      console.error('Database error creating member:', {
+        error,
+        message: error.message,
+        code: (error as any).code,
+        details: (error as any).details,
+        id,
+        name,
+      })
+      
       // 檢查是否為重複 ID 錯誤
-      if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
+      const errorMessage = String(error.message || '')
+      const errorCode = String((error as any).code || '')
+      
+      if (errorCode === '23505' || 
+          errorMessage.includes('duplicate') || 
+          errorMessage.includes('unique') ||
+          errorMessage.includes('already exists')) {
         return NextResponse.json(
           { error: '會員編號已存在，請使用其他編號' },
           { status: 400 }
         )
       }
-      throw error
+      
+      return NextResponse.json(
+        { error: `新增會員失敗：${errorMessage || '資料庫錯誤'}` },
+        { status: 500 }
+      )
     }
 
-    return NextResponse.json({ success: true })
+    console.log('會員創建成功:', data)
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Error creating member:', error)
     const errorMessage = error instanceof Error ? error.message : 'Failed to create member'

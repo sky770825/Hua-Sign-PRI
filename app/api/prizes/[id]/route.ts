@@ -196,7 +196,9 @@ export async function PUT(
     const usedQuantity = existingPrize.total_quantity - existingPrize.remaining_quantity
     const newRemainingQuantity = Math.max(0, totalQuantity - usedQuantity)
 
-    const { error: updateError } = await insforge.database
+    console.log('更新獎品:', { id, name, totalQuantity, probability })
+    
+    const { data, error: updateError } = await insforge.database
       .from(TABLES.PRIZES)
       .update({
         name,
@@ -208,12 +210,24 @@ export async function PUT(
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .select()
 
     if (updateError) {
-      throw updateError
+      console.error('Error updating prize:', {
+        error: updateError,
+        message: updateError.message,
+        code: (updateError as any).code,
+        id,
+      })
+      
+      return NextResponse.json(
+        { error: `更新獎品失敗：${updateError.message || '資料庫錯誤'}` },
+        { status: 500 }
+      )
     }
 
-    return NextResponse.json({ success: true })
+    console.log('獎品更新成功:', data)
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Error updating prize:', error)
     return NextResponse.json(
@@ -229,6 +243,7 @@ export async function DELETE(
 ) {
   try {
     const id = parseInt(params.id)
+    console.log('刪除獎品:', { id })
 
     const { data: prize, error: fetchError } = await insforge.database
       .from(TABLES.PRIZES)
@@ -237,33 +252,57 @@ export async function DELETE(
       .single()
 
     if (fetchError || !prize) {
+      console.error('Prize not found:', { id, fetchError })
       return NextResponse.json(
-        { error: 'Prize not found' },
+        { error: '獎品不存在' },
         { status: 404 }
       )
     }
 
     // 刪除圖片文件（使用服務端客戶端）
     if (prize.image_key) {
-      await insforgeService.storage
-        .from(BUCKETS.PRIZES)
-        .remove(prize.image_key)
+      try {
+        const { error: removeError } = await insforgeService.storage
+          .from(BUCKETS.PRIZES)
+          .remove(prize.image_key)
+        
+        if (removeError) {
+          console.warn('Failed to remove image:', removeError)
+          // 繼續刪除獎品，即使圖片刪除失敗
+        }
+      } catch (removeException) {
+        console.warn('Exception removing image:', removeException)
+        // 繼續刪除獎品
+      }
     }
 
-    const { error: deleteError } = await insforge.database
+    const { data: deletedPrize, error: deleteError } = await insforge.database
       .from(TABLES.PRIZES)
       .delete()
       .eq('id', id)
+      .select()
 
     if (deleteError) {
-      throw deleteError
+      console.error('Error deleting prize:', {
+        error: deleteError,
+        message: deleteError.message,
+        code: (deleteError as any).code,
+        id,
+      })
+      
+      return NextResponse.json(
+        { error: `刪除獎品失敗：${deleteError.message || '資料庫錯誤'}` },
+        { status: 500 }
+      )
     }
 
-    return NextResponse.json({ success: true })
+    console.log('獎品刪除成功:', deletedPrize)
+    return NextResponse.json({ success: true, data: deletedPrize })
   } catch (error) {
     console.error('Error deleting prize:', error)
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
     return NextResponse.json(
-      { error: 'Failed to delete prize' },
+      { error: `刪除獎品失敗：${errorMessage}` },
       { status: 500 }
     )
   }

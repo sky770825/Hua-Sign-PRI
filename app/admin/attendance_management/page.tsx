@@ -1913,12 +1913,22 @@ export default function AttendanceManagement() {
                             const response = await fetch(`/api/prizes/${prize.id}`, {
                               method: 'DELETE',
                             })
+                            
                             if (response.ok) {
-                              loadPrizes()
+                              const data = await response.json()
+                              if (data.success) {
+                                alert('獎品已成功刪除')
+                                loadPrizes()
+                              } else {
+                                alert('刪除失敗：' + (data.error || '未知錯誤'))
+                              }
+                            } else {
+                              const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
+                              alert('刪除失敗：' + (errorData.error || '未知錯誤'))
                             }
                           } catch (error) {
                             console.error('Error deleting prize:', error)
-                            alert('刪除失敗')
+                            alert('刪除失敗：網路錯誤或伺服器無回應')
                           }
                         }}
                         className="flex-1 px-3 py-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-all text-sm font-semibold"
