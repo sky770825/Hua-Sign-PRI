@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { insforge, insforgeService, TABLES, BUCKETS } from '@/lib/insforge'
+import { apiError, apiSuccess, handleDatabaseError } from '@/lib/api-utils'
+import { validatePrize } from '@/lib/validation'
+
+export const dynamic = 'force-dynamic'
 
 export async function PUT(
   request: Request,
@@ -8,16 +12,24 @@ export async function PUT(
   try {
     const formData = await request.formData()
     const id = parseInt(params.id)
+    
+    if (isNaN(id) || id <= 0) {
+      return apiError('獎品 ID 無效', 400)
+    }
+    
     const name = formData.get('name') as string
     const totalQuantity = parseInt(formData.get('totalQuantity') as string) || 0
     const probability = parseFloat(formData.get('probability') as string) || 0.0
     const imageFile = formData.get('image') as File | null
 
     if (!name) {
-      return NextResponse.json(
-        { error: 'Prize name is required' },
-        { status: 400 }
-      )
+      return apiError('獎品名稱為必填欄位', 400)
+    }
+
+    // 使用統一的驗證函數
+    const validation = validatePrize({ name, totalQuantity, probability })
+    if (!validation.valid) {
+      return apiError(validation.error || '輸入驗證失敗', 400)
     }
 
     // 獲取現有獎品信息
@@ -27,11 +39,13 @@ export async function PUT(
       .eq('id', id)
       .single()
 
-    if (fetchError || !existingPrize) {
-      return NextResponse.json(
-        { error: 'Prize not found' },
-        { status: 404 }
-      )
+    if (fetchError) {
+      console.error('Error fetching prize:', fetchError)
+      return apiError(`查詢獎品失敗：${handleDatabaseError(fetchError)}`, 500)
+    }
+    
+    if (!existingPrize) {
+      return apiError(`獎品不存在（ID：${id}）`, 404)
     }
 
     let imageUrl = existingPrize.image_url
@@ -185,10 +199,8 @@ export async function PUT(
         }
       } catch (error) {
         console.error('Error processing image upload:', error)
-        return NextResponse.json(
-          { error: `處理圖片時發生錯誤：${error instanceof Error ? error.message : '未知錯誤'}` },
-          { status: 500 }
-        )
+        const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+        return apiError(`處理圖片時發生錯誤：${errorMessage}`, 500)
       }
     }
 
@@ -220,20 +232,15 @@ export async function PUT(
         id,
       })
       
-      return NextResponse.json(
-        { error: `更新獎品失敗：${updateError.message || '資料庫錯誤'}` },
-        { status: 500 }
-      )
+      return apiError(`更新獎品失敗：${handleDatabaseError(updateError)}`, 500)
     }
 
     console.log('獎品更新成功:', data)
-    return NextResponse.json({ success: true, data })
+    return apiSuccess(data)
   } catch (error) {
     console.error('Error updating prize:', error)
-    return NextResponse.json(
-      { error: 'Failed to update prize' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    return apiError(`更新獎品失敗：${errorMessage}`, 500)
   }
 }
 
@@ -243,6 +250,11 @@ export async function DELETE(
 ) {
   try {
     const id = parseInt(params.id)
+    
+    if (isNaN(id) || id <= 0) {
+      return apiError('獎品 ID 無效', 400)
+    }
+    
     console.log('刪除獎品:', { id })
 
     const { data: prize, error: fetchError } = await insforge.database
@@ -251,12 +263,14 @@ export async function DELETE(
       .eq('id', id)
       .single()
 
-    if (fetchError || !prize) {
-      console.error('Prize not found:', { id, fetchError })
-      return NextResponse.json(
-        { error: '獎品不存在' },
-        { status: 404 }
-      )
+    if (fetchError) {
+      console.error('Error fetching prize:', { id, fetchError })
+      return apiError(`查詢獎品失敗：${handleDatabaseError(fetchError)}`, 500)
+    }
+    
+    if (!prize) {
+      console.warn('Prize not found:', { id })
+      return apiError(`獎品不存在（ID：${id}）`, 404)
     }
 
     // 檢查是否有中獎記錄引用此獎品
@@ -286,10 +300,7 @@ export async function DELETE(
       
       if (deleteWinnersError) {
         console.error('Error deleting winners:', deleteWinnersError)
-        return NextResponse.json(
-          { error: `無法刪除獎品：此獎品有 ${winners.length} 筆中獎記錄，且無法自動刪除。請先手動刪除相關中獎記錄。` },
-          { status: 400 }
-        )
+        return apiError(`無法刪除獎品：此獎品有 ${winners.length} 筆中獎記錄，且無法自動刪除。請先手動刪除相關中獎記錄。`, 400)
       }
       
       console.log('相關中獎記錄已刪除，繼續刪除獎品')

@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
+import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
+import { validateMember } from '@/lib/validation'
+
+export const dynamic = 'force-dynamic'
 
 // 背景同步到 Google Sheets 的輔助函數
 async function syncToGoogleSheets() {
@@ -29,14 +33,30 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { name, profession } = await request.json()
+    const { data: body, error: parseError } = await safeJsonParse<{
+      name?: string
+      profession?: string
+    }>(request)
+    
+    if (parseError || !body) {
+      return apiError('請求格式錯誤：無法解析 JSON', 400)
+    }
+
+    const { name, profession } = body
     const id = parseInt(params.id)
 
+    if (isNaN(id) || id <= 0) {
+      return apiError('會員 ID 無效', 400)
+    }
+
     if (!name) {
-      return NextResponse.json(
-        { error: 'Name is required' },
-        { status: 400 }
-      )
+      return apiError('會員姓名為必填欄位', 400)
+    }
+
+    // 使用統一的驗證函數
+    const validation = validateMember({ name, profession })
+    if (!validation.valid) {
+      return apiError(validation.error || '輸入驗證失敗', 400)
     }
 
     console.log('更新會員:', { id, name, profession })
@@ -58,10 +78,7 @@ export async function PUT(
         id,
       })
       
-      return NextResponse.json(
-        { error: `更新會員失敗：${error.message || '資料庫錯誤'}` },
-        { status: 500 }
-      )
+      return apiError(`更新會員失敗：${handleDatabaseError(error)}`, 500)
     }
 
     console.log('會員更新成功:', data)
@@ -71,14 +88,11 @@ export async function PUT(
       console.error('背景同步到 Google Sheets 失敗:', err)
     })
     
-    return NextResponse.json({ success: true, data })
+    return apiSuccess(data)
   } catch (error) {
     console.error('Error updating member:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Failed to update member'
-    return NextResponse.json(
-      { error: '更新會員失敗，請稍後再試' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    return apiError('更新會員失敗，請稍後再試', 500)
   }
 }
 
@@ -143,10 +157,7 @@ export async function DELETE(
       
       if (deleteCheckinsError) {
         console.error('Error deleting checkins:', deleteCheckinsError)
-        return NextResponse.json(
-          { error: `無法刪除會員：此會員有簽到記錄，且無法自動刪除。請先手動刪除相關簽到記錄。` },
-          { status: 400 }
-        )
+        return apiError(`無法刪除會員：此會員有簽到記錄，且無法自動刪除。請先手動刪除相關簽到記錄。`, 400)
       }
       
       // 同時刪除相關的中獎記錄（如果有的話）
@@ -182,30 +193,13 @@ export async function DELETE(
       const errorMessage = String(error.message || '')
       const errorCode = String((error as any).code || '')
       
-      // 檢查是否為外鍵約束錯誤
-      if (errorCode === '23503' || 
-          errorMessage.includes('foreign key') || 
-          errorMessage.includes('constraint') ||
-          errorMessage.includes('referenced')) {
-        return NextResponse.json(
-          { error: '無法刪除會員：此會員有相關記錄，請先刪除相關記錄。系統已嘗試自動刪除，但可能仍有其他引用。' },
-          { status: 400 }
-        )
-      }
-      
-      return NextResponse.json(
-        { error: `刪除會員失敗：${errorMessage || '資料庫錯誤'} (錯誤碼: ${errorCode})` },
-        { status: 500 }
-      )
+      return apiError(`刪除會員失敗：${handleDatabaseError(error)}`, 500)
     }
 
     // 檢查是否真的刪除了（count 或 data 應該有值）
     if (!data || (count !== undefined && count === 0)) {
       console.warn('會員刪除失敗：沒有刪除任何記錄', { id, data, count })
-      return NextResponse.json(
-        { error: '刪除會員失敗：會員不存在或已被刪除' },
-        { status: 404 }
-      )
+      return apiError('刪除會員失敗：會員不存在或已被刪除', 404)
     }
 
     console.log('會員刪除成功:', { id, deleted: data, count })
@@ -215,23 +209,11 @@ export async function DELETE(
       console.error('背景同步到 Google Sheets 失敗:', err)
     })
     
-    return NextResponse.json({ success: true, data, deleted: (count || data?.length || 0) > 0 })
+    return apiSuccess({ data, deleted: (count || data?.length || 0) > 0 })
   } catch (error) {
     console.error('Error deleting member:', error)
     const errorMessage = error instanceof Error ? error.message : '未知錯誤'
-    
-    // 檢查是否為外鍵約束錯誤
-    if (errorMessage.includes('foreign key') || errorMessage.includes('constraint')) {
-      return NextResponse.json(
-        { error: '無法刪除會員：此會員有相關記錄，請先刪除相關記錄。' },
-        { status: 400 }
-      )
-    }
-    
-    return NextResponse.json(
-      { error: `刪除會員失敗：${errorMessage}` },
-      { status: 500 }
-    )
+    return apiError(`刪除會員失敗：${handleDatabaseError(error)}`, 500)
   }
 }
 
