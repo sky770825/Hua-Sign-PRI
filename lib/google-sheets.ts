@@ -49,12 +49,14 @@ export async function syncMembersToSheets(members: Array<{ id: number; name: str
     const sheets = google.sheets({ version: 'v4', auth: authClient })
 
     // 準備資料：標題行 + 資料行
+    // 格式：介紹人 | 名字 | 專業別 | VIP
     const values = [
-      ['編號', '姓名', '專業別'], // 標題行
+      ['介紹人', '名字', '專業別', 'VIP'], // 標題行（符合 Google Sheets 格式）
       ...members.map(m => [
-        m.id.toString(),
-        m.name,
-        m.profession || '',
+        '', // 介紹人（目前資料庫沒有此欄位，留空）
+        m.name, // 名字
+        m.profession || '', // 專業別
+        '', // VIP（目前資料庫沒有此欄位，留空）
       ]),
     ]
 
@@ -66,10 +68,10 @@ export async function syncMembersToSheets(members: Array<{ id: number; name: str
     const sheetId = spreadsheet.data.sheets?.[0]?.properties?.sheetId || 0
     const sheetName = spreadsheet.data.sheets?.[0]?.properties?.title || 'Sheet1'
     
-    // 清空現有資料並寫入新資料
+    // 清空現有資料並寫入新資料（A:D 對應：介紹人、名字、專業別、VIP）
     await sheets.spreadsheets.values.clear({
       spreadsheetId,
-      range: `${sheetName}!A:C`,
+      range: `${sheetName}!A:D`,
     })
 
     await sheets.spreadsheets.values.update({
@@ -93,7 +95,7 @@ export async function syncMembersToSheets(members: Array<{ id: number; name: str
                 startRowIndex: 0,
                 endRowIndex: 1,
                 startColumnIndex: 0,
-                endColumnIndex: 3,
+                endColumnIndex: 4, // 四欄：介紹人、名字、專業別、VIP
               },
               cell: {
                 userEnteredFormat: {
