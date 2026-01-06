@@ -25,12 +25,14 @@ export async function POST(request: Request) {
       return apiError(validation.error || '輸入驗證失敗', 400)
     }
 
-    // 檢查是否已存在
-    const { data: existing } = await insforge.database
+    // 檢查是否已存在（不使用 maybeSingle，直接檢查結果陣列）
+    const { data: existingMeetings } = await insforge.database
       .from(TABLES.MEETINGS)
       .select('*')
       .eq('date', date)
-      .maybeSingle()
+      .limit(1)
+    
+    const existing = existingMeetings && existingMeetings.length > 0 ? existingMeetings[0] : null
 
     console.log('創建/更新會議:', { date, status })
     

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { insforge, insforgeService, TABLES, BUCKETS } from '@/lib/insforge'
-import { apiError, handleDatabaseError } from '@/lib/api-utils'
+import { apiError, apiSuccess, handleDatabaseError } from '@/lib/api-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -229,7 +229,7 @@ export async function POST(request: Request) {
     // 插入獎品資料
     console.log('創建獎品:', { name, totalQuantity, probability, imageUrl: !!imageUrl })
     
-    const { data: prize, error: insertError } = await insforge.database
+    const { data: insertedPrizes, error: insertError } = await insforge.database
       .from(TABLES.PRIZES)
       .insert([{
         name,
@@ -240,8 +240,7 @@ export async function POST(request: Request) {
         probability,
       }])
       .select()
-      .single()
-
+    
     if (insertError) {
       console.error('Error creating prize:', {
         error: insertError,
@@ -251,16 +250,20 @@ export async function POST(request: Request) {
         name,
       })
       
-      return NextResponse.json(
-        { error: `新增獎品失敗：${insertError.message || '資料庫錯誤'}` },
-        { status: 500 }
-      )
+      return apiError(`新增獎品失敗：${handleDatabaseError(insertError)}`, 500)
+    }
+
+    // 從插入結果中獲取第一個（應該只有一個）
+    const prize = insertedPrizes && insertedPrizes.length > 0 ? insertedPrizes[0] : null
+
+    if (!prize) {
+      console.error('獎品創建失敗：沒有返回數據')
+      return apiError('新增獎品失敗：資料庫未返回數據', 500)
     }
 
     console.log('獎品創建成功:', prize)
-    return NextResponse.json({ 
-      success: true, 
-      id: prize?.id,
+    return apiSuccess({ 
+      id: prize.id,
       data: prize
     })
   } catch (error) {
