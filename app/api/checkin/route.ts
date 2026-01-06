@@ -3,7 +3,7 @@ import { insforge, TABLES } from '@/lib/insforge'
 
 export async function POST(request: Request) {
   try {
-    const { memberId, date, message, status } = await request.json()
+    const { memberId, date, message, status, checkin_time } = await request.json()
 
     // 輸入驗證
     if (!memberId || !date) {
@@ -103,12 +103,17 @@ export async function POST(request: Request) {
 
     if (existingCheckin) {
       // 更新簽到記錄
-      console.log('更新現有簽到記錄:', { memberId, date, status: checkinStatus })
+      console.log('更新現有簽到記錄:', { memberId, date, status: checkinStatus, checkin_time })
+      
+      // 如果提供了自定義時間，使用它；否則使用當前時間
+      const checkinTime = checkin_time 
+        ? new Date(checkin_time).toISOString()
+        : new Date().toISOString()
       
       const { error: updateError } = await insforge.database
         .from(TABLES.CHECKINS)
         .update({
-          checkin_time: new Date().toISOString(),
+          checkin_time: checkinTime,
           message: message?.trim() || null,
           status: checkinStatus,
         })
@@ -133,13 +138,19 @@ export async function POST(request: Request) {
       console.log('簽到記錄已更新:', { memberId, date, status: checkinStatus })
     } else {
       // 創建新簽到記錄
-      console.log('創建新簽到記錄:', { memberId, date, status: checkinStatus })
+      console.log('創建新簽到記錄:', { memberId, date, status: checkinStatus, checkin_time })
+      
+      // 如果提供了自定義時間，使用它；否則使用當前時間
+      const checkinTime = checkin_time 
+        ? new Date(checkin_time).toISOString()
+        : new Date().toISOString()
       
       const { error: insertError } = await insforge.database
         .from(TABLES.CHECKINS)
         .insert([{
           member_id: memberId,
           meeting_date: date,
+          checkin_time: checkinTime,
           message: message?.trim() || null,
           status: checkinStatus,
         }])

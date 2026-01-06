@@ -108,7 +108,12 @@ export default function AttendanceManagement() {
   const [selectedMembers, setSelectedMembers] = useState<number[]>([])
   const [filterStatus, setFilterStatus] = useState<'all' | 'present' | 'absent'>('all')
   const [meetingStats, setMeetingStats] = useState<Record<string, number>>({})
-  const [editingCheckin, setEditingCheckin] = useState<{memberId: number, message: string} | null>(null)
+  const [editingCheckin, setEditingCheckin] = useState<{
+    memberId: number
+    message: string
+    status: string
+    checkin_time: string
+  } | null>(null)
   const [sortBy, setSortBy] = useState<'id' | 'name' | 'time' | 'status'>('id')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [memberAttendanceStats, setMemberAttendanceStats] = useState<Record<number, {total: number, present: number, rate: number}>>({})
@@ -674,9 +679,18 @@ export default function AttendanceManagement() {
 
   const handleEditCheckin = (memberId: number) => {
     const checkin = getCheckinStatus(memberId)
+    if (!checkin) return
+    
+    // 格式化時間為本地時間（用於 datetime-local input）
+    const checkinTime = checkin.checkin_time 
+      ? new Date(checkin.checkin_time).toISOString().slice(0, 16)
+      : new Date().toISOString().slice(0, 16)
+    
     setEditingCheckin({
       memberId,
-      message: checkin?.message || '',
+      message: checkin.message || '',
+      status: checkin.status || 'present',
+      checkin_time: checkinTime,
     })
   }
 
@@ -685,11 +699,16 @@ export default function AttendanceManagement() {
 
     // 樂觀更新：立即更新簽到記錄
     const member = members.find(m => m.id === editingCheckin.memberId)
+    // 將本地時間轉換為 ISO 字符串
+    const checkinTimeISO = editingCheckin.checkin_time 
+      ? new Date(editingCheckin.checkin_time).toISOString()
+      : new Date().toISOString()
+    
     const updatedCheckin: CheckinRecord = {
       member_id: editingCheckin.memberId,
-      checkin_time: new Date().toISOString(),
+      checkin_time: checkinTimeISO,
       message: (editingCheckin.message.trim() || null) as string | null,
-      status: 'present',
+      status: editingCheckin.status || 'present',
       name: member?.name || '',
     }
     setCheckins(prev => prev.map(c => 
@@ -718,7 +737,10 @@ export default function AttendanceManagement() {
           memberId: savedEditingCheckin.memberId,
           date: selectedDate,
           message: savedEditingCheckin.message.trim() || null,
-          status: 'present',
+          status: savedEditingCheckin.status || 'present',
+          checkin_time: savedEditingCheckin.checkin_time 
+            ? new Date(savedEditingCheckin.checkin_time).toISOString()
+            : undefined,
         }),
       })
 
@@ -1864,9 +1886,21 @@ export default function AttendanceManagement() {
                           </td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                             {checkin ? (
-                              <span className="px-3 py-1 inline-flex text-xs font-bold rounded-full bg-green-100 text-green-800 border border-green-200">
-                                ✓ 已簽到
-                              </span>
+                              (() => {
+                                const statusMap: Record<string, { text: string; bg: string; textColor: string; border: string }> = {
+                                  'present': { text: '正常', bg: 'bg-green-100', textColor: 'text-green-800', border: 'border-green-200' },
+                                  'early': { text: '早安', bg: 'bg-blue-100', textColor: 'text-blue-800', border: 'border-blue-200' },
+                                  'late': { text: '遲到', bg: 'bg-yellow-100', textColor: 'text-yellow-800', border: 'border-yellow-200' },
+                                  'early_leave': { text: '早退', bg: 'bg-orange-100', textColor: 'text-orange-800', border: 'border-orange-200' },
+                                  'absent': { text: '缺席', bg: 'bg-red-100', textColor: 'text-red-800', border: 'border-red-200' },
+                                }
+                                const statusInfo = statusMap[checkin.status] || statusMap['present']
+                                return (
+                                  <span className={`px-3 py-1 inline-flex text-xs font-bold rounded-full ${statusInfo.bg} ${statusInfo.textColor} border ${statusInfo.border}`}>
+                                    {statusInfo.text}
+                                  </span>
+                                )
+                              })()
                             ) : (
                               <span className="px-3 py-1 inline-flex text-xs font-bold rounded-full bg-red-100 text-red-800 border border-red-200">
                                 ✗ 缺席
@@ -2804,6 +2838,33 @@ export default function AttendanceManagement() {
                   value={members.find(m => m.id === editingCheckin.memberId)?.name || ''}
                   disabled
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  出席狀態
+                </label>
+                <select
+                  value={editingCheckin.status}
+                  onChange={(e) => setEditingCheckin({ ...editingCheckin, status: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="present">正常</option>
+                  <option value="early">早安</option>
+                  <option value="late">遲到</option>
+                  <option value="early_leave">早退</option>
+                  <option value="absent">缺席</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  簽到時間
+                </label>
+                <input
+                  type="datetime-local"
+                  value={editingCheckin.checkin_time}
+                  onChange={(e) => setEditingCheckin({ ...editingCheckin, checkin_time: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
               <div>
