@@ -583,51 +583,106 @@ export default function AttendanceManagement() {
       })
 
       if (response.ok) {
-        loadData()
+        const data = await response.json()
+        if (data.success) {
+          alert('會員已成功刪除')
+          loadData()
+        } else {
+          alert('刪除失敗：' + (data.error || '未知錯誤'))
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
+        alert('刪除失敗：' + (errorData.error || '未知錯誤'))
       }
     } catch (error) {
       console.error('Error deleting member:', error)
+      alert('刪除失敗：網路錯誤或伺服器無回應')
     }
   }
 
   const handleSaveMember = async () => {
     try {
       if (editingMember) {
-        // 更新会员
+        // 更新會員
+        if (!editingMember.name || editingMember.name.trim() === '') {
+          alert('請輸入會員姓名')
+          return
+        }
+
         const response = await fetch(`/api/members/${editingMember.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            name: editingMember.name,
-            profession: editingMember.profession,
+            name: editingMember.name.trim(),
+            profession: editingMember.profession?.trim() || '',
           }),
         })
 
         if (response.ok) {
-          setShowMemberModal(false)
-          setEditingMember(null)
-          loadData()
+          const data = await response.json()
+          if (data.success) {
+            alert('會員已成功更新')
+            setShowMemberModal(false)
+            setEditingMember(null)
+            loadData()
+          } else {
+            alert('更新失敗：' + (data.error || '未知錯誤'))
+          }
+        } else {
+          const errorData = await response.json().catch(() => ({ error: '更新失敗' }))
+          alert('更新失敗：' + (errorData.error || '未知錯誤'))
         }
       } else {
-        // 创建新会员
+        // 創建新會員
+        // 驗證輸入
+        if (!newMember.id || newMember.id.trim() === '') {
+          alert('請輸入會員編號')
+          return
+        }
+
+        if (!newMember.name || newMember.name.trim() === '') {
+          alert('請輸入會員姓名')
+          return
+        }
+
+        const memberId = parseInt(newMember.id)
+        if (isNaN(memberId) || memberId <= 0) {
+          alert('會員編號必須是正整數')
+          return
+        }
+
         const response = await fetch('/api/members/create', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(newMember),
+          body: JSON.stringify({
+            id: memberId,
+            name: newMember.name.trim(),
+            profession: newMember.profession?.trim() || '',
+          }),
         })
 
         if (response.ok) {
-          setShowMemberModal(false)
-          setNewMember({ id: '', name: '', profession: '' })
-          loadData()
+          const data = await response.json()
+          if (data.success) {
+            alert('會員已成功新增')
+            setShowMemberModal(false)
+            setNewMember({ id: '', name: '', profession: '' })
+            loadData()
+          } else {
+            alert('新增失敗：' + (data.error || '未知錯誤'))
+          }
+        } else {
+          const errorData = await response.json().catch(() => ({ error: '新增失敗' }))
+          alert('新增失敗：' + (errorData.error || '未知錯誤'))
         }
       }
     } catch (error) {
       console.error('Error saving member:', error)
+      alert('操作失敗：網路錯誤或伺服器無回應')
     }
   }
 

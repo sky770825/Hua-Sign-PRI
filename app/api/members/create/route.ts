@@ -60,14 +60,30 @@ export async function POST(request: Request) {
       }])
 
     if (error) {
+      console.error('Database error creating member:', error)
+      // 檢查是否為重複 ID 錯誤
+      if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
+        return NextResponse.json(
+          { error: '會員編號已存在，請使用其他編號' },
+          { status: 400 }
+        )
+      }
       throw error
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error creating member:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create member'
+    // 如果是已知錯誤，返回詳細訊息
+    if (errorMessage.includes('already exists') || errorMessage.includes('duplicate')) {
+      return NextResponse.json(
+        { error: '會員編號已存在，請使用其他編號' },
+        { status: 400 }
+      )
+    }
     return NextResponse.json(
-      { error: 'Failed to create member' },
+      { error: errorMessage.includes('Member ID already exists') ? '會員編號已存在' : '新增會員失敗，請稍後再試' },
       { status: 500 }
     )
   }
