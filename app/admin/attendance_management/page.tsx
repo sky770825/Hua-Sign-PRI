@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { filterVercelText, safeApiCall } from '@/lib/frontend-utils'
 
 interface Member {
   id: number
