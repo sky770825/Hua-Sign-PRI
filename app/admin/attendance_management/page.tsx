@@ -463,10 +463,15 @@ export default function AttendanceManagement() {
 
   const handleManualCheckin = async (memberId: number, status: string) => {
     const key = `checkin-${memberId}`
-    if (actionLoading[key]) return
+    if (actionLoading[key]) {
+      console.log('簽到操作進行中，跳過重複請求')
+      return
+    }
 
     setActionLoading(prev => ({ ...prev, [key]: true }))
     try {
+      console.log('開始手動簽到:', { memberId, date: selectedDate, status })
+      
       const response = await fetch('/api/checkin', {
         method: 'POST',
         headers: {
@@ -481,19 +486,26 @@ export default function AttendanceManagement() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || '簽到失敗')
+        const errorData = await response.json().catch(() => ({ error: '簽到失敗' }))
+        const errorMessage = errorData.error || '簽到失敗'
+        console.error('簽到失敗:', { status: response.status, error: errorMessage })
+        alert(`簽到失敗：${errorMessage}`)
+        return
       }
 
       const data = await response.json()
+      console.log('簽到響應:', data)
+      
       if (data.success) {
-        await loadData()
+        alert('簽到成功！')
+        await loadData(false, selectedDate)
       } else {
-        alert('簽到失敗，請重試')
+        alert('簽到失敗：' + (data.error || '未知錯誤'))
       }
     } catch (error) {
       console.error('Error checking in:', error)
-      alert(error instanceof Error ? error.message : '簽到失敗')
+      const errorMessage = error instanceof Error ? error.message : '簽到失敗'
+      alert(`簽到失敗：${errorMessage}`)
     } finally {
       setActionLoading(prev => ({ ...prev, [key]: false }))
     }
@@ -503,6 +515,8 @@ export default function AttendanceManagement() {
     if (!confirm('確定要刪除此簽到記錄嗎？')) return
 
     try {
+      console.log('刪除簽到記錄:', { memberId, date: selectedDate })
+      
       const response = await fetch('/api/checkin/delete', {
         method: 'POST',
         headers: {
@@ -515,19 +529,26 @@ export default function AttendanceManagement() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || '刪除失敗')
+        const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
+        const errorMessage = errorData.error || '刪除失敗'
+        console.error('刪除簽到記錄失敗:', { status: response.status, error: errorMessage })
+        alert(`刪除失敗：${errorMessage}`)
+        return
       }
 
       const data = await response.json()
+      console.log('刪除簽到記錄響應:', data)
+      
       if (data.success) {
-        await loadData()
+        alert('簽到記錄已成功刪除')
+        await loadData(false, selectedDate)
       } else {
-        alert('刪除失敗，請重試')
+        alert('刪除失敗：' + (data.error || '未知錯誤'))
       }
     } catch (error) {
       console.error('Error deleting checkin:', error)
-      alert(error instanceof Error ? error.message : '刪除失敗')
+      const errorMessage = error instanceof Error ? error.message : '刪除失敗'
+      alert(`刪除失敗：${errorMessage}`)
     }
   }
 
@@ -592,6 +613,12 @@ export default function AttendanceManagement() {
     if (!editingCheckin) return
 
     try {
+      console.log('更新簽到記錄:', { 
+        memberId: editingCheckin.memberId, 
+        date: selectedDate, 
+        message: editingCheckin.message 
+      })
+      
       const response = await fetch('/api/checkin', {
         method: 'POST',
         headers: {
@@ -600,26 +627,33 @@ export default function AttendanceManagement() {
         body: JSON.stringify({
           memberId: editingCheckin.memberId,
           date: selectedDate,
-          message: editingCheckin.message,
+          message: editingCheckin.message.trim() || null,
           status: 'present',
         }),
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || '更新失敗')
+        const errorData = await response.json().catch(() => ({ error: '更新失敗' }))
+        const errorMessage = errorData.error || '更新失敗'
+        console.error('更新簽到記錄失敗:', { status: response.status, error: errorMessage })
+        alert(`更新失敗：${errorMessage}`)
+        return
       }
 
       const data = await response.json()
+      console.log('更新簽到記錄響應:', data)
+      
       if (data.success) {
+        alert('簽到記錄已成功更新')
         setEditingCheckin(null)
-        await loadData()
+        await loadData(false, selectedDate)
       } else {
-        alert('更新失敗，請重試')
+        alert('更新失敗：' + (data.error || '未知錯誤'))
       }
     } catch (error) {
       console.error('Error updating checkin:', error)
-      alert(error instanceof Error ? error.message : '更新失敗')
+      const errorMessage = error instanceof Error ? error.message : '更新失敗'
+      alert(`更新失敗：${errorMessage}`)
     }
   }
 
@@ -867,21 +901,38 @@ export default function AttendanceManagement() {
     if (!confirm(`確定要刪除 ${selectedMembers.length} 筆簽到記錄嗎？`)) return
 
     try {
+      console.log('開始批量刪除簽到記錄:', { count: selectedMembers.length, date: selectedDate })
+      
       const promises = selectedMembers.map(memberId =>
         fetch('/api/checkin/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ memberId, date: selectedDate }),
+        }).then(async (response) => {
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
+            throw new Error(`會員 ${memberId}: ${errorData.error || '刪除失敗'}`)
+          }
+          return response.json()
         })
       )
 
-      await Promise.all(promises)
+      const results = await Promise.allSettled(promises)
+      const failed = results.filter(r => r.status === 'rejected')
+      
+      if (failed.length > 0) {
+        console.error('批量刪除部分失敗:', failed)
+        const errorMessages = failed.map((f: any) => f.reason?.message || '未知錯誤').join('\n')
+        alert(`批量刪除完成，但有 ${failed.length} 筆記錄刪除失敗：\n${errorMessages}`)
+      } else {
+        alert(`批量刪除成功！已刪除 ${selectedMembers.length} 筆簽到記錄`)
+      }
+      
       setSelectedMembers([])
-      loadData()
-      alert('批量刪除成功！')
+      await loadData(false, selectedDate)
     } catch (error) {
       console.error('Error batch deleting:', error)
-      alert('批量刪除失敗')
+      alert('批量刪除失敗：' + (error instanceof Error ? error.message : '未知錯誤'))
     }
   }
 

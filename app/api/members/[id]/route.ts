@@ -61,6 +61,69 @@ export async function DELETE(
     const id = parseInt(params.id)
     console.log('刪除會員:', { id })
 
+    // 檢查會員是否存在
+    const { data: member, error: fetchError } = await insforge.database
+      .from(TABLES.MEMBERS)
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !member) {
+      console.error('Member not found:', { id, fetchError })
+      return NextResponse.json(
+        { error: '會員不存在' },
+        { status: 404 }
+      )
+    }
+
+    // 檢查是否有簽到記錄引用此會員
+    const { data: checkins, error: checkinsError } = await insforge.database
+      .from(TABLES.CHECKINS)
+      .select('id')
+      .eq('member_id', id)
+      .limit(1)
+
+    if (checkinsError) {
+      console.warn('Error checking checkins:', checkinsError)
+      // 繼續嘗試刪除，如果真的有外鍵約束，資料庫會阻止
+    }
+
+    if (checkins && checkins.length > 0) {
+      console.log('會員有簽到記錄，自動刪除相關記錄:', { 
+        id, 
+        memberName: member.name,
+        checkinCount: checkins.length 
+      })
+      
+      // 先刪除相關的簽到記錄
+      const { error: deleteCheckinsError } = await insforge.database
+        .from(TABLES.CHECKINS)
+        .delete()
+        .eq('member_id', id)
+      
+      if (deleteCheckinsError) {
+        console.error('Error deleting checkins:', deleteCheckinsError)
+        return NextResponse.json(
+          { error: `無法刪除會員：此會員有簽到記錄，且無法自動刪除。請先手動刪除相關簽到記錄。` },
+          { status: 400 }
+        )
+      }
+      
+      // 同時刪除相關的中獎記錄（如果有的話）
+      const { error: deleteWinnersError } = await insforge.database
+        .from(TABLES.LOTTERY_WINNERS)
+        .delete()
+        .eq('member_id', id)
+      
+      if (deleteWinnersError) {
+        console.warn('Error deleting lottery winners:', deleteWinnersError)
+        // 繼續刪除會員，即使中獎記錄刪除失敗
+      }
+      
+      console.log('相關記錄已刪除，繼續刪除會員')
+    }
+
+    // 刪除會員
     const { data, error } = await insforge.database
       .from(TABLES.MEMBERS)
       .delete()
@@ -79,19 +142,19 @@ export async function DELETE(
       const errorMessage = String(error.message || '')
       const errorCode = String((error as any).code || '')
       
-      // 檢查是否為外鍵約束錯誤（會員有簽到記錄）
+      // 檢查是否為外鍵約束錯誤
       if (errorCode === '23503' || 
           errorMessage.includes('foreign key') || 
           errorMessage.includes('constraint') ||
           errorMessage.includes('referenced')) {
         return NextResponse.json(
-          { error: '無法刪除：此會員有簽到記錄，請先刪除相關簽到記錄' },
+          { error: '無法刪除會員：此會員有相關記錄，請先刪除相關記錄。系統已嘗試自動刪除，但可能仍有其他引用。' },
           { status: 400 }
         )
       }
       
       return NextResponse.json(
-        { error: `刪除會員失敗：${errorMessage || '資料庫錯誤'}` },
+        { error: `刪除會員失敗：${errorMessage || '資料庫錯誤'} (錯誤碼: ${errorCode})` },
         { status: 500 }
       )
     }
@@ -100,14 +163,16 @@ export async function DELETE(
     return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Error deleting member:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Failed to delete member'
-    // 檢查是否為外鍵約束錯誤（會員有簽到記錄）
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    
+    // 檢查是否為外鍵約束錯誤
     if (errorMessage.includes('foreign key') || errorMessage.includes('constraint')) {
       return NextResponse.json(
-        { error: '無法刪除：此會員有簽到記錄，請先刪除相關簽到記錄' },
+        { error: '無法刪除會員：此會員有相關記錄，請先刪除相關記錄。' },
         { status: 400 }
       )
     }
+    
     return NextResponse.json(
       { error: `刪除會員失敗：${errorMessage}` },
       { status: 500 }
