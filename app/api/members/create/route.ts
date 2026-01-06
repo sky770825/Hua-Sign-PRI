@@ -61,6 +61,7 @@ export async function POST(request: Request) {
         profession: (profession || '').trim() || null,
       }])
       .select()
+      .single()
 
     if (error) {
       console.error('Database error creating member:', {
@@ -92,8 +93,20 @@ export async function POST(request: Request) {
       )
     }
 
+    if (!data) {
+      console.error('會員創建失敗：沒有返回數據')
+      return NextResponse.json(
+        { error: '新增會員失敗：資料庫未返回數據' },
+        { status: 500 }
+      )
+    }
+
     console.log('會員創建成功:', data)
-    return NextResponse.json({ success: true, data })
+    return NextResponse.json({ 
+      success: true, 
+      data: data,
+      member: data // 同時返回 member 字段以確保兼容性
+    })
   } catch (error) {
     console.error('Error creating member:', error)
     const errorMessage = error instanceof Error ? error.message : 'Failed to create member'

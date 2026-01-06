@@ -741,6 +741,8 @@ export default function AttendanceManagement() {
           return
         }
 
+        console.log('開始新增會員:', { id: memberId, name: newMember.name.trim(), profession: newMember.profession?.trim() || '' })
+        
         const response = await fetch('/api/members/create', {
           method: 'POST',
           headers: {
@@ -753,19 +755,29 @@ export default function AttendanceManagement() {
           }),
         })
 
+        console.log('新增會員 API 響應:', { ok: response.ok, status: response.status })
+
         if (response.ok) {
           const data = await response.json()
+          console.log('新增會員 API 數據:', data)
+          
           if (data.success) {
             alert('會員已成功新增')
             setShowMemberModal(false)
             setNewMember({ id: '', name: '', profession: '' })
-            loadData()
+            // 確保數據刷新
+            await loadData(false)
+            console.log('會員數據已刷新')
           } else {
-            alert('新增失敗：' + (data.error || '未知錯誤'))
+            const errorMessage = data.error || '未知錯誤'
+            console.error('新增會員失敗:', errorMessage)
+            alert('新增失敗：' + errorMessage)
           }
         } else {
           const errorData = await response.json().catch(() => ({ error: '新增失敗' }))
-          alert('新增失敗：' + (errorData.error || '未知錯誤'))
+          const errorMessage = errorData.error || '新增失敗'
+          console.error('新增會員 API 錯誤:', { status: response.status, error: errorMessage })
+          alert('新增失敗：' + errorMessage)
         }
       }
     } catch (error) {
