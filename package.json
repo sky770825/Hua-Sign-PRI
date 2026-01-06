@@ -11,14 +11,11 @@
   },
   "dependencies": {
     "@insforge/sdk": "^1.0.8",
-    "better-sqlite3": "^9.0.0",
     "next": "^14.0.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "sqlite3": "^5.1.6"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
