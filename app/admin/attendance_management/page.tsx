@@ -595,24 +595,25 @@ export default function AttendanceManagement() {
       console.log('刪除簽到記錄響應:', data)
       
       if (data.success) {
-        // 背景刷新數據確保同步
-        await loadData(false, selectedDate)
+        // 前端已經樂觀更新，不再強制重抓，避免畫面閃爍
         setToast({ message: '簽到記錄已成功刪除', type: 'success' })
         setTimeout(() => setToast(null), 3000)
       } else {
-        // 失敗時恢復
+        // 失敗時恢復（靜默刷新）
         if (checkinToDelete) {
           setCheckins(prev => [...prev, checkinToDelete])
         }
+        await loadData(true, selectedDate)
         setToast({ message: '刪除失敗：' + (data.error || '未知錯誤'), type: 'error' })
         setTimeout(() => setToast(null), 4000)
       }
     } catch (error) {
       console.error('Error deleting checkin:', error)
-      // 失敗時恢復
+      // 失敗時恢復（靜默刷新）
       if (checkinToDelete) {
         setCheckins(prev => [...prev, checkinToDelete])
       }
+      await loadData(true, selectedDate)
       const errorMessage = error instanceof Error ? error.message : '刪除失敗'
       setToast({ message: `刪除失敗：${errorMessage}`, type: 'error' })
       setTimeout(() => setToast(null), 4000)
