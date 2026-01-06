@@ -151,7 +151,16 @@ export default function AttendanceManagement() {
     const controller = new AbortController()
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
     try {
-      return await fetch(input, { ...init, signal: controller.signal })
+      // 添加快取控制和時間戳以繞過 Vercel CDN 快取
+      const url = typeof input === 'string' 
+        ? `${input}${input.includes('?') ? '&' : '?'}_t=${Date.now()}`
+        : input
+      const headers = {
+        ...((init?.headers as Record<string, string>) || {}),
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      }
+      return await fetch(url, { ...init, headers, signal: controller.signal, cache: 'no-store' })
     } finally {
       window.clearTimeout(timeoutId)
     }
@@ -306,7 +315,7 @@ export default function AttendanceManagement() {
 
   const loadPrizes = useCallback(async () => {
     try {
-      const response = await fetch('/api/prizes')
+      const response = await fetch(`/api/prizes?_t=${Date.now()}`, { cache: 'no-store' })
       const data = await response.json()
       setPrizes(data.prizes || [])
     } catch (error) {
