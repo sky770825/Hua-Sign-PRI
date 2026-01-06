@@ -97,10 +97,21 @@ export async function DELETE(
       .eq('id', id)
       .single()
 
-    if (fetchError || !member) {
-      console.error('Member not found:', { id, fetchError })
+    if (fetchError) {
+      // 如果是查詢錯誤（不是找不到），返回 500
+      if (fetchError.message && !fetchError.message.includes('No rows')) {
+        console.error('Error fetching member:', { id, fetchError })
+        return NextResponse.json(
+          { error: `查詢會員失敗：${fetchError.message || '資料庫錯誤'}` },
+          { status: 500 }
+        )
+      }
+    }
+    
+    if (!member) {
+      console.warn('Member not found:', { id })
       return NextResponse.json(
-        { error: '會員不存在' },
+        { error: `會員不存在（編號：${id}）` },
         { status: 404 }
       )
     }

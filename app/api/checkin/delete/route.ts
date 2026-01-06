@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     // 刪除簽到記錄
     const { data, error, count } = await insforge.database
       .from(TABLES.CHECKINS)
-      .delete()
+      .delete({ count: 'exact' })
       .eq('member_id', memberId)
       .eq('meeting_date', date)
       .select()
@@ -38,7 +38,28 @@ export async function POST(request: Request) {
     }
 
     const deletedCount = data?.length || 0
-    console.log('簽到記錄刪除成功:', { deletedCount, data })
+    console.log('簽到記錄刪除結果:', { deletedCount, memberId, date, data })
+    
+    // 如果沒有刪除任何記錄，可能是記錄不存在
+    if (deletedCount === 0) {
+      // 檢查記錄是否存在
+      const { data: existingCheckin } = await insforge.database
+        .from(TABLES.CHECKINS)
+        .select('id')
+        .eq('member_id', memberId)
+        .eq('meeting_date', date)
+        .maybeSingle()
+      
+      if (!existingCheckin) {
+        console.warn('簽到記錄不存在:', { memberId, date })
+        return NextResponse.json({
+          success: true,
+          deleted: false,
+          count: 0,
+          message: '簽到記錄不存在或已被刪除'
+        })
+      }
+    }
     
     return NextResponse.json({ 
       success: true, 

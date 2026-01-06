@@ -149,7 +149,7 @@ export default function AttendanceManagement() {
     probability: 1.0,
     image: null as File | null,
   })
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
   const fetchWithTimeout = useCallback(async (
     input: RequestInfo,
@@ -607,9 +607,21 @@ export default function AttendanceManagement() {
       console.log('刪除簽到記錄響應:', data)
       
       if (data.success) {
-        // 前端已經樂觀更新，不再強制重抓，避免畫面閃爍
-        setToast({ message: '簽到記錄已成功刪除', type: 'success' })
-        setTimeout(() => setToast(null), 3000)
+        // 檢查是否真的刪除了記錄
+        if (data.deleted === false || data.count === 0) {
+          // 記錄不存在或已被刪除，但前端已經樂觀更新移除了，所以保持移除狀態
+          setToast({ message: data.message || '簽到記錄不存在或已被刪除', type: 'info' })
+          setTimeout(() => setToast(null), 3000)
+        } else {
+          // 成功刪除
+          // 延遲背景刷新，確保刪除狀態保持
+          setTimeout(() => {
+            loadData(true, selectedDate).catch(err => console.error('背景刷新失敗:', err))
+          }, 2000)
+          
+          setToast({ message: '簽到記錄已成功刪除', type: 'success' })
+          setTimeout(() => setToast(null), 3000)
+        }
       } else {
         // 失敗時恢復（靜默刷新）
         if (checkinToDelete) {
@@ -837,8 +849,14 @@ export default function AttendanceManagement() {
           setMembers(prev => [...prev, memberToDelete].sort((a, b) => a.id - b.id))
         }
         const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
-        const errorMsg = filterVercelText(errorData.error || '刪除失敗：伺服器錯誤')
-        setToast({ message: errorMsg, type: 'error' })
+        const errorMsg = filterVercelText(errorData.error || `刪除失敗：HTTP ${response.status}`)
+        
+        // 如果是 404，顯示更清楚的訊息
+        if (response.status === 404) {
+          setToast({ message: `會員不存在（編號：${memberId}），可能已被刪除`, type: 'error' })
+        } else {
+          setToast({ message: errorMsg, type: 'error' })
+        }
         setTimeout(() => setToast(null), 4000)
       }
     } catch (error) {
@@ -1539,12 +1557,14 @@ export default function AttendanceManagement() {
         <div className="fixed top-4 right-4 z-50" style={{ animation: 'slideIn 0.3s ease-out' }}>
           <div className={`px-6 py-4 rounded-lg shadow-2xl backdrop-blur-sm border-2 min-w-[300px] ${
             toast.type === 'success' 
-              ? 'bg-green-500/95 border-green-400 text-white' 
-              : 'bg-red-500/95 border-red-400 text-white'
+              ? 'bg-green-500/95 border-green-400 text-white'
+              : toast.type === 'error'
+              ? 'bg-red-500/95 border-red-400 text-white'
+              : 'bg-blue-500/95 border-blue-400 text-white'
           }`}>
             <div className="flex items-center gap-3">
               <span className="text-2xl flex-shrink-0">
-                {toast.type === 'success' ? '✅' : '❌'}
+                {toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️'}
               </span>
               <span className="font-semibold">
                 {filterVercelText(toast.message)}
