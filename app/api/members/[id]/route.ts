@@ -104,111 +104,64 @@ export async function DELETE(
 ) {
   try {
     const id = parseInt(params.id)
-    console.log('刪除會員 v2:', { id })
+    console.log('刪除會員 v3:', { id })
 
-    // 檢查會員是否存在（不使用 single/maybeSingle，直接檢查結果陣列）
-    const { data: members, error: fetchError } = await insforge.database
-      .from(TABLES.MEMBERS)
-      .select('*')
-      .eq('id', id)
-      .limit(1)
-
-    if (fetchError) {
-      console.error('Error fetching member:', { id, fetchError })
-      return apiError(`查詢會員失敗：${handleDatabaseError(fetchError)}`, 500)
-    }
-    
-    const member = members && members.length > 0 ? members[0] : null
-    
-    if (!member) {
-      console.warn('Member not found:', { id })
-      return apiError(`會員不存在（編號：${id}），可能已被刪除`, 404)
+    if (isNaN(id) || id <= 0) {
+      return apiError('會員 ID 無效', 400)
     }
 
-    // 檢查是否有簽到記錄引用此會員
-    const { data: checkins, error: checkinsError } = await insforge.database
+    // 直接嘗試刪除相關的簽到記錄（如果有的話）
+    const { error: deleteCheckinsError } = await insforge.database
       .from(TABLES.CHECKINS)
-      .select('id')
+      .delete()
       .eq('member_id', id)
-      .limit(1)
-
-    if (checkinsError) {
-      console.warn('Error checking checkins:', checkinsError)
-      // 繼續嘗試刪除，如果真的有外鍵約束，資料庫會阻止
+    
+    if (deleteCheckinsError) {
+      console.warn('刪除相關簽到記錄時出錯（可能沒有記錄）:', deleteCheckinsError)
     }
 
-    if (checkins && checkins.length > 0) {
-      console.log('會員有簽到記錄，自動刪除相關記錄:', { 
-        id, 
-        memberName: member.name,
-        checkinCount: checkins.length 
-      })
-      
-      // 先刪除相關的簽到記錄
-      const { error: deleteCheckinsError } = await insforge.database
-        .from(TABLES.CHECKINS)
-        .delete()
-        .eq('member_id', id)
-      
-      if (deleteCheckinsError) {
-        console.error('Error deleting checkins:', deleteCheckinsError)
-        return apiError(`無法刪除會員：此會員有簽到記錄，且無法自動刪除。請先手動刪除相關簽到記錄。`, 400)
-      }
-      
-      // 同時刪除相關的中獎記錄（如果有的話）
-      const { error: deleteWinnersError } = await insforge.database
-        .from(TABLES.LOTTERY_WINNERS)
-        .delete()
-        .eq('member_id', id)
-      
-      if (deleteWinnersError) {
-        console.warn('Error deleting lottery winners:', deleteWinnersError)
-        // 繼續刪除會員，即使中獎記錄刪除失敗
-      }
-      
-      console.log('相關記錄已刪除，繼續刪除會員')
+    // 刪除相關的中獎記錄（如果有的話）
+    const { error: deleteWinnersError } = await insforge.database
+      .from(TABLES.LOTTERY_WINNERS)
+      .delete()
+      .eq('member_id', id)
+    
+    if (deleteWinnersError) {
+      console.warn('刪除相關中獎記錄時出錯（可能沒有記錄）:', deleteWinnersError)
     }
 
-    // 刪除會員
-    const { data, error, count } = await insforge.database
+    // 直接刪除會員，不先檢查是否存在
+    const { data: deletedMembers, error: deleteError } = await insforge.database
       .from(TABLES.MEMBERS)
-      .delete({ count: 'exact' })
+      .delete()
       .eq('id', id)
       .select()
 
-    if (error) {
-      console.error('Database error deleting member:', {
-        error,
-        message: error.message,
-        code: (error as any).code,
-        details: (error as any).details,
-        id,
-      })
-      
-      const errorMessage = String(error.message || '')
-      const errorCode = String((error as any).code || '')
-      
-      return apiError(`刪除會員失敗：${handleDatabaseError(error)}`, 500)
+    if (deleteError) {
+      console.error('刪除會員時出錯:', { id, deleteError })
+      return apiError(`刪除會員失敗：${handleDatabaseError(deleteError)}`, 500)
     }
 
-    // 檢查是否真的刪除了（count 或 data 應該有值）
-    if (!data || (count !== undefined && count === 0)) {
-      console.warn('會員刪除失敗：沒有刪除任何記錄', { id, data, count })
-      return apiError('刪除會員失敗：會員不存在或已被刪除', 404)
+    // 檢查是否真的刪除了記錄
+    if (!deletedMembers || deletedMembers.length === 0) {
+      console.warn('會員不存在或已被刪除:', { id })
+      return apiError(`會員不存在（編號：${id}），可能已被刪除`, 404)
     }
 
-    console.log('會員刪除成功:', { id, deleted: data, count })
+    const member = deletedMembers[0]
+    console.log('會員刪除成功:', { id, name: member.name })
     
     // 背景同步到 Google Sheets（不阻塞響應）
     syncToGoogleSheets().catch(err => {
       console.error('背景同步到 Google Sheets 失敗:', err)
     })
     
-    return apiSuccess({ data, deleted: (count || data?.length || 0) > 0 })
+    return apiSuccess({ data: deletedMembers, deleted: true })
   } catch (error) {
-    console.error('Error deleting member:', error)
+    console.error('刪除會員時發生異常:', error)
     const errorMessage = error instanceof Error ? error.message : '未知錯誤'
-    return apiError(`刪除會員失敗：${handleDatabaseError(error)}`, 500)
+    return apiError(`刪除會員失敗：${errorMessage}`, 500)
   }
 }
+
 
