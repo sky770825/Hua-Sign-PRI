@@ -16,19 +16,33 @@ export async function PUT(
       )
     }
 
-    const { error } = await insforge.database
+    console.log('更新會議:', { id, date, status })
+    
+    const { data, error } = await insforge.database
       .from(TABLES.MEETINGS)
       .update({
         date,
         status: status || 'scheduled',
       })
       .eq('id', id)
+      .select()
 
     if (error) {
-      throw error
+      console.error('Error updating meeting:', {
+        error,
+        message: error.message,
+        code: (error as any).code,
+        id,
+      })
+      
+      return NextResponse.json(
+        { error: `更新會議失敗：${error.message || '資料庫錯誤'}` },
+        { status: 500 }
+      )
     }
 
-    return NextResponse.json({ success: true })
+    console.log('會議更新成功:', data)
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Error updating meeting:', error)
     return NextResponse.json(
@@ -52,25 +66,46 @@ export async function DELETE(
       .eq('id', id)
       .single()
 
+    console.log('刪除會議:', { id })
+    
     if (meeting) {
       // 刪除會議相關的簽到記錄
-      await insforge.database
+      const { error: deleteCheckinsError } = await insforge.database
         .from(TABLES.CHECKINS)
         .delete()
         .eq('meeting_date', meeting.date)
+      
+      if (deleteCheckinsError) {
+        console.warn('Failed to delete checkins:', deleteCheckinsError)
+        // 繼續刪除會議，即使簽到記錄刪除失敗
+      } else {
+        console.log('相關簽到記錄已刪除')
+      }
     }
 
     // 刪除會議
-    const { error } = await insforge.database
+    const { data, error } = await insforge.database
       .from(TABLES.MEETINGS)
       .delete()
       .eq('id', id)
+      .select()
 
     if (error) {
-      throw error
+      console.error('Error deleting meeting:', {
+        error,
+        message: error.message,
+        code: (error as any).code,
+        id,
+      })
+      
+      return NextResponse.json(
+        { error: `刪除會議失敗：${error.message || '資料庫錯誤'}` },
+        { status: 500 }
+      )
     }
 
-    return NextResponse.json({ success: true })
+    console.log('會議刪除成功:', data)
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Error deleting meeting:', error)
     return NextResponse.json(

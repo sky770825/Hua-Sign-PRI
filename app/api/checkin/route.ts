@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
     if (existingCheckin) {
       // 更新簽到記錄
-      await insforge.database
+      const { error: updateError } = await insforge.database
         .from(TABLES.CHECKINS)
         .update({
           checkin_time: new Date().toISOString(),
@@ -86,9 +86,16 @@ export async function POST(request: Request) {
         })
         .eq('member_id', memberId)
         .eq('meeting_date', date)
+      
+      if (updateError) {
+        console.error('Error updating checkin:', updateError)
+        throw updateError
+      }
+      
+      console.log('簽到記錄已更新:', { memberId, date })
     } else {
       // 創建新簽到記錄
-      await insforge.database
+      const { error: insertError } = await insforge.database
         .from(TABLES.CHECKINS)
         .insert([{
           member_id: memberId,
@@ -96,6 +103,13 @@ export async function POST(request: Request) {
           message: message?.trim() || null,
           status: checkinStatus,
         }])
+      
+      if (insertError) {
+        console.error('Error creating checkin:', insertError)
+        throw insertError
+      }
+      
+      console.log('簽到記錄已創建:', { memberId, date })
     }
 
     return NextResponse.json({ success: true })

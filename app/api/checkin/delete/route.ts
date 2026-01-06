@@ -12,18 +12,39 @@ export async function POST(request: Request) {
       )
     }
 
+    console.log('刪除簽到記錄:', { memberId, date })
+    
     // 刪除簽到記錄
-    const { error, count } = await insforge.database
+    const { data, error, count } = await insforge.database
       .from(TABLES.CHECKINS)
-      .delete({ count: 'exact' })
+      .delete()
       .eq('member_id', memberId)
       .eq('meeting_date', date)
+      .select()
 
     if (error) {
-      throw error
+      console.error('Error deleting checkin:', {
+        error,
+        message: error.message,
+        code: (error as any).code,
+        memberId,
+        date,
+      })
+      
+      return NextResponse.json(
+        { error: `刪除簽到記錄失敗：${error.message || '資料庫錯誤'}` },
+        { status: 500 }
+      )
     }
 
-    return NextResponse.json({ success: true, deleted: (count || 0) > 0 })
+    const deletedCount = data?.length || 0
+    console.log('簽到記錄刪除成功:', { deletedCount, data })
+    
+    return NextResponse.json({ 
+      success: true, 
+      deleted: deletedCount > 0,
+      count: deletedCount
+    })
   } catch (error) {
     console.error('Error deleting checkin:', error)
     return NextResponse.json(
