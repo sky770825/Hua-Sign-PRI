@@ -193,10 +193,13 @@ export default function AttendanceManagement() {
       let checkinsData: { checkins: CheckinRecord[] } = { checkins: [] }
       if (checkinsRes.status === 'fulfilled' && checkinsRes.value.ok) {
         checkinsData = await checkinsRes.value.json()
+        console.log('loadData checkins for date', targetDate, checkinsData)
       } else {
-        console.warn('Failed to fetch checkins, using empty array')
+        console.warn('Failed to fetch checkins:', {
+          status: checkinsRes.status === 'fulfilled' ? checkinsRes.value.status : 'rejected',
+        })
       }
-
+      
       setMembers(membersData.members || [])
       setMeetings(meetingsData.meetings || [])
       setCheckins(checkinsData.checkins || [])
@@ -766,33 +769,40 @@ export default function AttendanceManagement() {
     setMembers(prev => prev.filter(m => m.id !== memberId))
     
     try {
+      console.log('刪除會員請求:', memberId)
       const response = await fetch(`/api/members/${memberId}`, {
         method: 'DELETE',
       })
 
+      console.log('刪除會員響應:', { status: response.status, ok: response.ok })
+
       if (response.ok) {
         const data = await response.json()
-        if (data.success) {
+        console.log('刪除會員響應數據:', data)
+        
+        if (data.success && (data.deleted !== false)) {
           // 前端已經將會員從列表中移除，這裡不再強制重抓，避免列表又被還原
           setToast({ message: '會員已成功刪除', type: 'success' })
           setTimeout(() => setToast(null), 3000)
         } else {
           // 失敗時恢復列表
+          console.warn('刪除會員失敗：', data)
           if (memberToDelete) {
             setMembers(prev => [...prev, memberToDelete].sort((a, b) => a.id - b.id))
           }
-          const errorMsg = filterVercelText(data.error || '未知錯誤')
-          setToast({ message: '刪除失敗：' + errorMsg, type: 'error' })
+          const errorMsg = filterVercelText(data.error || '刪除失敗：未知錯誤')
+          setToast({ message: errorMsg, type: 'error' })
           setTimeout(() => setToast(null), 4000)
         }
       } else {
         // 失敗時恢復列表
+        console.error('刪除會員 HTTP 錯誤:', response.status)
         if (memberToDelete) {
           setMembers(prev => [...prev, memberToDelete].sort((a, b) => a.id - b.id))
         }
         const errorData = await response.json().catch(() => ({ error: '刪除失敗' }))
-        const errorMsg = filterVercelText(errorData.error || '未知錯誤')
-        setToast({ message: '刪除失敗：' + errorMsg, type: 'error' })
+        const errorMsg = filterVercelText(errorData.error || '刪除失敗：伺服器錯誤')
+        setToast({ message: errorMsg, type: 'error' })
         setTimeout(() => setToast(null), 4000)
       }
     } catch (error) {

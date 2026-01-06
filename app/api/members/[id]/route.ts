@@ -124,9 +124,9 @@ export async function DELETE(
     }
 
     // 刪除會員
-    const { data, error } = await insforge.database
+    const { data, error, count } = await insforge.database
       .from(TABLES.MEMBERS)
-      .delete()
+      .delete({ count: 'exact' })
       .eq('id', id)
       .select()
 
@@ -159,8 +159,17 @@ export async function DELETE(
       )
     }
 
-    console.log('會員刪除成功:', data)
-    return NextResponse.json({ success: true, data })
+    // 檢查是否真的刪除了（count 或 data 應該有值）
+    if (!data || (count !== undefined && count === 0)) {
+      console.warn('會員刪除失敗：沒有刪除任何記錄', { id, data, count })
+      return NextResponse.json(
+        { error: '刪除會員失敗：會員不存在或已被刪除' },
+        { status: 404 }
+      )
+    }
+
+    console.log('會員刪除成功:', { id, deleted: data, count })
+    return NextResponse.json({ success: true, data, deleted: (count || data?.length || 0) > 0 })
   } catch (error) {
     console.error('Error deleting member:', error)
     const errorMessage = error instanceof Error ? error.message : '未知錯誤'
