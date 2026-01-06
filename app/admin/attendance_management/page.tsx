@@ -814,8 +814,13 @@ export default function AttendanceManagement() {
     
     try {
       console.log('刪除會員請求:', memberId)
-      const response = await fetch(`/api/members/${memberId}`, {
+      const response = await fetch(`/api/members/${memberId}?_t=${Date.now()}`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
+        cache: 'no-store',
       })
 
       console.log('刪除會員響應:', { status: response.status, ok: response.ok })
@@ -894,11 +899,13 @@ export default function AttendanceManagement() {
         const savedEditingMember = editingMember
         setEditingMember(null)
 
-        const response = await fetch(`/api/members/${savedEditingMember.id}`, {
+        const response = await fetch(`/api/members/${savedEditingMember.id}?_t=${Date.now()}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
           },
+          cache: 'no-store',
           body: JSON.stringify({
             name: savedEditingMember.name.trim(),
             profession: savedEditingMember.profession?.trim() || '',
@@ -971,11 +978,13 @@ export default function AttendanceManagement() {
         
         let response;
         try {
-          response = await fetch('/api/members/create', {
+          response = await fetch(`/api/members/create?_t=${Date.now()}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
             },
+            cache: 'no-store',
             body: JSON.stringify(savedMemberData),
           })
         } catch (fetchError) {
