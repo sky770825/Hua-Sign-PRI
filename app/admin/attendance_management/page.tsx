@@ -155,28 +155,36 @@ export default function AttendanceManagement() {
     }
     try {
       const targetDate = dateOverride ?? selectedDate
-      // 并行加载数据以提高性能
-      const [membersRes, meetingsRes, checkinsRes] = await Promise.all([
-        fetchWithTimeout('/api/members'),
-        fetchWithTimeout('/api/meetings'),
-        fetchWithTimeout(`/api/checkins?date=${targetDate}`)
+      // 並行加載基本數據以提高性能，使用更短的超時時間
+      const [membersRes, meetingsRes, checkinsRes] = await Promise.allSettled([
+        fetchWithTimeout('/api/members', undefined, 6000),
+        fetchWithTimeout('/api/meetings', undefined, 6000),
+        fetchWithTimeout(`/api/checkins?date=${targetDate}`, undefined, 6000)
       ])
 
-      if (!membersRes.ok) {
-        throw new Error('Failed to fetch members')
-      }
-      if (!meetingsRes.ok) {
-        throw new Error('Failed to fetch meetings')
-      }
-      if (!checkinsRes.ok) {
-        throw new Error('Failed to fetch checkins')
+      // 處理會員數據
+      let membersData = { members: [] }
+      if (membersRes.status === 'fulfilled' && membersRes.value.ok) {
+        membersData = await membersRes.value.json()
+      } else {
+        console.warn('Failed to fetch members, using empty array')
       }
 
-      const [membersData, meetingsData, checkinsData] = await Promise.all([
-        membersRes.json(),
-        meetingsRes.json(),
-        checkinsRes.json()
-      ])
+      // 處理會議數據
+      let meetingsData = { meetings: [] }
+      if (meetingsRes.status === 'fulfilled' && meetingsRes.value.ok) {
+        meetingsData = await meetingsRes.value.json()
+      } else {
+        console.warn('Failed to fetch meetings, using empty array')
+      }
+
+      // 處理簽到數據
+      let checkinsData = { checkins: [] }
+      if (checkinsRes.status === 'fulfilled' && checkinsRes.value.ok) {
+        checkinsData = await checkinsRes.value.json()
+      } else {
+        console.warn('Failed to fetch checkins, using empty array')
+      }
 
       setMembers(membersData.members || [])
       setMeetings(meetingsData.meetings || [])
@@ -186,38 +194,61 @@ export default function AttendanceManagement() {
       const todayMeeting = meetingsData.meetings?.find((m: Meeting) => m.date === targetDate)
       setSelectedMeeting(todayMeeting || null)
 
-      // 获取每个会议的签到人数
+      // 獲取每個會議的簽到人數（優化：只獲取最近 5 個會議，避免過多請求導致載入過久）
       const stats: Record<string, number> = {}
-      for (const meeting of meetingsData.meetings || []) {
+      const meetingDates = (meetingsData.meetings || []).slice(-5).map((m: Meeting) => m.date)
+      
+      // 並行獲取會議的簽到數據（限制為最近 5 個會議，使用更短的超時）
+      const checkinPromises: Array<Promise<{ date: string; checkins: CheckinRecord[] }>> = meetingDates.map(async (date: string) => {
         try {
-          const checkinsRes = await fetchWithTimeout(`/api/checkins?date=${meeting.date}`)
+          const checkinsRes = await fetchWithTimeout(`/api/checkins?date=${date}`, undefined, 4000)
+          if (!checkinsRes.ok) {
+            return { date, checkins: [] as CheckinRecord[] }
+          }
           const checkinsData = await checkinsRes.json()
-          stats[meeting.date] = checkinsData.checkins?.length || 0
+          return { date, checkins: (checkinsData.checkins || []) as CheckinRecord[] }
         } catch (err) {
-          stats[meeting.date] = 0
+          // 請求失敗時返回空數組，不影響頁面顯示
+          return { date, checkins: [] as CheckinRecord[] }
+        }
+      })
+      
+      // 使用 Promise.allSettled 確保即使部分請求失敗也能繼續
+      const checkinResults = await Promise.allSettled(checkinPromises)
+      const allCheckinsByDate: Record<string, CheckinRecord[]> = {}
+      for (const result of checkinResults) {
+        if (result.status === 'fulfilled') {
+          allCheckinsByDate[result.value.date] = result.value.checkins
+          stats[result.value.date] = result.value.checkins.length
         }
       }
+      
+      // 為所有會議設置統計（沒有數據的設為 0）
+      (meetingsData.meetings || []).forEach((meeting: Meeting) => {
+        if (!stats[meeting.date]) {
+          stats[meeting.date] = 0
+        }
+      })
+      
       setMeetingStats(stats)
 
-      // 计算每个会员的出席统计
+      // 計算每個會員的出席統計（使用已獲取的數據，只計算最近 10 個會議）
       const memberStats: Record<number, {total: number, present: number, rate: number}> = {}
-      for (const member of membersData.members) {
-        let presentCount = 0
-        for (const meeting of meetingsData.meetings || []) {
-          try {
-            const checkinsRes = await fetchWithTimeout(`/api/checkins?date=${meeting.date}`)
-            const checkinsData = await checkinsRes.json()
-            const hasCheckin = checkinsData.checkins?.some((c: CheckinRecord) => c.member_id === member.id && c.status === 'present')
+      const totalMeetings = meetingDates.length
+      
+      if (totalMeetings > 0) {
+        for (const member of membersData.members) {
+          let presentCount = 0
+          for (const date of meetingDates) {
+            const checkins = allCheckinsByDate[date] || []
+            const hasCheckin = checkins.some((c: CheckinRecord) => c.member_id === member.id && c.status === 'present')
             if (hasCheckin) presentCount++
-          } catch (err) {
-            // ignore
           }
-        }
-        const totalMeetings = meetingsData.meetings?.length || 0
-        memberStats[member.id] = {
-          total: totalMeetings,
-          present: presentCount,
-          rate: totalMeetings > 0 ? (presentCount / totalMeetings) * 100 : 0
+          memberStats[member.id] = {
+            total: totalMeetings,
+            present: presentCount,
+            rate: totalMeetings > 0 ? (presentCount / totalMeetings) * 100 : 0
+          }
         }
       }
       setMemberAttendanceStats(memberStats)
