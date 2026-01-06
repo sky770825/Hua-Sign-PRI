@@ -92,8 +92,8 @@ export async function PUT(
           )
         }
 
-        if (uploadData) {
-          imageUrl = uploadData.url || uploadData.publicUrl || ''
+        if (uploadData && uploadData.url) {
+          imageUrl = uploadData.url
           imageKey = uploadData.key || fileName
         } else {
           console.error('Upload succeeded but no data returned')
