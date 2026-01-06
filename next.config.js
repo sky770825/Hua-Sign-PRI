@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // 生產環境優化
-  output: 'standalone', // 生成獨立部署包
   // 確保 API 路由在生產環境正常工作
   experimental: {
     serverActions: {
