@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { insforge, TABLES, BUCKETS } from '@/lib/insforge'
+import { insforge, insforgeService, TABLES, BUCKETS } from '@/lib/insforge'
 
 export async function GET() {
   try {
@@ -70,8 +70,8 @@ export async function POST(request: Request) {
         const arrayBuffer = await imageFile.arrayBuffer()
         const blob = new Blob([arrayBuffer], { type: imageFile.type })
         
-        // 使用 upload 方法上傳
-        const { data: uploadData, error: uploadError } = await insforge.storage
+        // 使用服務端客戶端上傳（避免外鍵約束錯誤）
+        const { data: uploadData, error: uploadError } = await insforgeService.storage
           .from(BUCKETS.PRIZES)
           .upload(fileName, blob)
 

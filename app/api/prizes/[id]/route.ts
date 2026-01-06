@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { insforge, TABLES, BUCKETS } from '@/lib/insforge'
+import { insforge, insforgeService, TABLES, BUCKETS } from '@/lib/insforge'
 
 export async function PUT(
   request: Request,
@@ -58,10 +58,10 @@ export async function PUT(
           )
         }
 
-        // 刪除舊圖片
+        // 刪除舊圖片（使用服務端客戶端）
         if (existingPrize.image_key) {
           try {
-            await insforge.storage
+            await insforgeService.storage
               .from(BUCKETS.PRIZES)
               .remove(existingPrize.image_key)
           } catch (removeError) {
@@ -79,8 +79,8 @@ export async function PUT(
         const arrayBuffer = await imageFile.arrayBuffer()
         const blob = new Blob([arrayBuffer], { type: imageFile.type })
         
-        // 使用 upload 方法上傳
-        const { data: uploadData, error: uploadError } = await insforge.storage
+        // 使用服務端客戶端上傳（避免外鍵約束錯誤）
+        const { data: uploadData, error: uploadError } = await insforgeService.storage
           .from(BUCKETS.PRIZES)
           .upload(fileName, blob)
 
@@ -162,9 +162,9 @@ export async function DELETE(
       )
     }
 
-    // 刪除圖片文件
+    // 刪除圖片文件（使用服務端客戶端）
     if (prize.image_key) {
-      await insforge.storage
+      await insforgeService.storage
         .from(BUCKETS.PRIZES)
         .remove(prize.image_key)
     }
