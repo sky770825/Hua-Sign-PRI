@@ -19,11 +19,20 @@ export function apiError(message: string, status: number = 500, details?: any) {
  * 統一的 API 成功響應格式
  */
 export function apiSuccess(data?: any, message?: string) {
-  return NextResponse.json({
-    success: true,
-    ...(data && { data }),
-    ...(message && { message })
-  })
+  return NextResponse.json(
+    {
+      success: true,
+      ...(data && { data }),
+      ...(message && { message })
+    },
+    {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    }
+  )
 }
 
 /**
