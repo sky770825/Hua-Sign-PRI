@@ -329,6 +329,35 @@ export default function AttendanceManagement() {
     }
   }, [activeTab, loadPrizes])
 
+  // 全局錯誤處理器
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error('全局錯誤:', event.error)
+      if (event.error && event.error.message) {
+        const errorMsg = filterVercelText(event.error.message)
+        setToast({ message: `發生錯誤：${errorMsg}`, type: 'error' })
+        setTimeout(() => setToast(null), 5000)
+      }
+    }
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error('未處理的 Promise 拒絕:', event.reason)
+      const errorMsg = event.reason instanceof Error 
+        ? filterVercelText(event.reason.message)
+        : filterVercelText(String(event.reason || '未知錯誤'))
+      setToast({ message: `操作失敗：${errorMsg}`, type: 'error' })
+      setTimeout(() => setToast(null), 5000)
+    }
+
+    window.addEventListener('error', handleError)
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+
+    return () => {
+      window.removeEventListener('error', handleError)
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+    }
+  }, [])
+
   useEffect(() => {
     // 檢查登入狀態（確保在客戶端執行）
     if (typeof window === 'undefined') {
