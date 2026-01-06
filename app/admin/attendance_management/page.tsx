@@ -516,8 +516,8 @@ export default function AttendanceManagement() {
         const errorMessage = errorData.error || '簽到失敗'
         console.error('簽到失敗:', { status: response.status, error: errorMessage })
         
-        // 失敗時恢復原狀態
-        await loadData(false, selectedDate)
+        // 失敗時恢復原狀態（背景靜默刷新，避免整頁「載入中」閃動）
+        await loadData(true, selectedDate)
         setToast({ message: `簽到失敗：${errorMessage}`, type: 'error' })
         setTimeout(() => setToast(null), 4000)
         return
@@ -527,13 +527,13 @@ export default function AttendanceManagement() {
       console.log('簽到響應:', data)
       
       if (data.success) {
-        // 背景刷新數據確保同步
-        await loadData(false, selectedDate)
+        // 背景靜默刷新數據（不顯示全頁 loading），確保與資料庫同步
+        await loadData(true, selectedDate)
         setToast({ message: '簽到成功！', type: 'success' })
         setTimeout(() => setToast(null), 3000)
       } else {
-        // 失敗時恢復原狀態
-        await loadData(false, selectedDate)
+        // 失敗時恢復原狀態（靜默刷新）
+        await loadData(true, selectedDate)
         setToast({ message: '簽到失敗：' + (data.error || '未知錯誤'), type: 'error' })
         setTimeout(() => setToast(null), 4000)
       }
@@ -541,8 +541,8 @@ export default function AttendanceManagement() {
       console.error('Error checking in:', error)
       const errorMessage = error instanceof Error ? error.message : '簽到失敗'
       
-      // 失敗時恢復原狀態
-      await loadData(false, selectedDate)
+      // 失敗時恢復原狀態（靜默刷新）
+      await loadData(true, selectedDate)
       setToast({ message: `簽到失敗：${errorMessage}`, type: 'error' })
       setTimeout(() => setToast(null), 4000)
     } finally {
