@@ -1,40 +1,35 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
+import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
+import { validateCheckin } from '@/lib/validation'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
-    const { memberId, date, message, status, checkin_time } = await request.json()
+    const { data: body, error: parseError } = await safeJsonParse<{
+      memberId?: any
+      date?: string
+      message?: string
+      status?: string
+      checkin_time?: string
+    }>(request)
+    
+    if (parseError || !body) {
+      return apiError('請求格式錯誤：無法解析 JSON', 400)
+    }
+
+    const { memberId, date, message, status, checkin_time } = body
 
     // 輸入驗證
     if (!memberId || !date) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
+      return apiError('會員編號和日期為必填欄位', 400)
     }
 
-    // 驗證 memberId 是數字
-    if (typeof memberId !== 'number' || memberId <= 0) {
-      return NextResponse.json(
-        { error: 'Invalid member ID' },
-        { status: 400 }
-      )
-    }
-
-    // 驗證日期格式
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return NextResponse.json(
-        { error: 'Invalid date format' },
-        { status: 400 }
-      )
-    }
-
-    // 驗證消息長度（防止過長輸入）
-    if (message && message.length > 500) {
-      return NextResponse.json(
-        { error: 'Message too long (max 500 characters)' },
-        { status: 400 }
-      )
+    // 使用統一的驗證函數
+    const validation = validateCheckin({ memberId, date, message, status, checkin_time })
+    if (!validation.valid) {
+      return apiError(validation.error || '輸入驗證失敗', 400)
     }
 
     // 檢查是否有會議
@@ -46,18 +41,12 @@ export async function POST(request: Request) {
 
     if (meetingFetchError) {
       console.error('Error fetching meeting:', meetingFetchError)
-      return NextResponse.json(
-        { error: `檢查會議狀態失敗：${meetingFetchError.message || '資料庫錯誤'}` },
-        { status: 500 }
-      )
+      return apiError(`檢查會議狀態失敗：${handleDatabaseError(meetingFetchError)}`, 500)
     }
 
     if (!existingMeeting) {
       // 沒有會議時，不允許簽到，回傳清楚的錯誤訊息
-      return NextResponse.json(
-        { error: '今天沒有會議，請先在後台建立會議後再簽到' },
-        { status: 400 }
-      )
+      return apiError('今天沒有會議，請先在後台建立會議後再簽到', 400)
     }
 
     const checkinStatus = status || 'present'
@@ -71,18 +60,12 @@ export async function POST(request: Request) {
 
     if (memberFetchError) {
       console.error('Error fetching member:', memberFetchError)
-      return NextResponse.json(
-        { error: `檢查會員失敗：${memberFetchError.message || '資料庫錯誤'}` },
-        { status: 500 }
-      )
+      return apiError(`檢查會員失敗：${handleDatabaseError(memberFetchError)}`, 500)
     }
 
     if (!member) {
       console.error('Member not found:', { memberId })
-      return NextResponse.json(
-        { error: '會員不存在，請確認會員編號是否正確' },
-        { status: 404 }
-      )
+      return apiError(`會員不存在（編號：${memberId}），請確認會員編號是否正確`, 404)
     }
 
     // 檢查是否已經簽到
@@ -95,10 +78,7 @@ export async function POST(request: Request) {
 
     if (checkinFetchError) {
       console.error('Error fetching existing checkin:', checkinFetchError)
-      return NextResponse.json(
-        { error: `檢查簽到狀態失敗：${checkinFetchError.message || '資料庫錯誤'}` },
-        { status: 500 }
-      )
+      return apiError(`檢查簽到狀態失敗：${handleDatabaseError(checkinFetchError)}`, 500)
     }
 
     if (existingCheckin) {
@@ -129,10 +109,7 @@ export async function POST(request: Request) {
           memberId,
           date,
         })
-        return NextResponse.json(
-          { error: `更新簽到記錄失敗：${updateError.message || '資料庫錯誤'}` },
-          { status: 500 }
-        )
+        return apiError(`更新簽到記錄失敗：${handleDatabaseError(updateError)}`, 500)
       }
       
       console.log('簽到記錄已更新:', { memberId, date, status: checkinStatus })
@@ -169,23 +146,13 @@ export async function POST(request: Request) {
         const errorMessage = String(insertError.message || '')
         const errorCode = String((insertError as any).code || '')
         
-        if (errorCode === '23503' || errorMessage.includes('foreign key')) {
-          return NextResponse.json(
-            { error: '簽到失敗：會員或會議不存在，請確認數據是否正確' },
-            { status: 400 }
-          )
-        }
-        
-        return NextResponse.json(
-          { error: `創建簽到記錄失敗：${insertError.message || '資料庫錯誤'}` },
-          { status: 500 }
-        )
+        return apiError(`創建簽到記錄失敗：${handleDatabaseError(insertError)}`, 500)
       }
       
       console.log('簽到記錄已創建:', { memberId, date, status: checkinStatus })
     }
 
-    return NextResponse.json({ success: true })
+    return apiSuccess()
   } catch (error) {
     console.error('Error checking in (catch block):', {
       error,
@@ -194,10 +161,7 @@ export async function POST(request: Request) {
     })
     
     const errorMessage = error instanceof Error ? error.message : '未知錯誤'
-    return NextResponse.json(
-      { error: `簽到失敗：${errorMessage}` },
-      { status: 500 }
-    )
+    return apiError(`簽到失敗：${errorMessage}`, 500)
   }
 }
 

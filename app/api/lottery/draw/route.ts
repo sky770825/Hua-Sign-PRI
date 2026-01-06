@@ -1,23 +1,39 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
+import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
-    const { date } = await request.json()
+    const { data: body, error: parseError } = await safeJsonParse<{ date?: string }>(request)
+    
+    if (parseError) {
+      return apiError('請求格式錯誤：無法解析 JSON', 400)
+    }
+
+    const { date } = body || {}
     const targetDate = date || new Date().toISOString().split('T')[0]
 
+    // 驗證日期格式
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+      return apiError('日期格式錯誤，應為 YYYY-MM-DD', 400)
+    }
+
     // 1. 獲取總簽到人數
-    const { count: totalCheckins } = await insforge.database
+    const { count: totalCheckins, error: countError } = await insforge.database
       .from(TABLES.CHECKINS)
       .select('*', { count: 'exact', head: true })
       .eq('meeting_date', targetDate)
       .eq('status', 'present')
 
+    if (countError) {
+      console.error('Error counting checkins:', countError)
+      return apiError(`查詢簽到人數失敗：${handleDatabaseError(countError)}`, 500)
+    }
+
     if (!totalCheckins || totalCheckins === 0) {
-      return NextResponse.json(
-        { error: '今天沒有簽到的會員' },
-        { status: 400 }
-      )
+      return apiError('今天沒有簽到的會員', 400)
     }
 
     // 2. 獲取已中獎人數

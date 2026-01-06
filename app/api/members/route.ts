@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
+import { apiError, handleDatabaseError } from '@/lib/api-utils'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
@@ -10,19 +13,14 @@ export async function GET() {
 
     if (error) {
       console.error('Error fetching members:', error)
-      return NextResponse.json(
-        { error: 'Failed to fetch members' },
-        { status: 500 }
-      )
+      return apiError(`查詢會員失敗：${handleDatabaseError(error)}`, 500)
     }
 
     return NextResponse.json({ members: members || [] })
   } catch (error) {
     console.error('Error fetching members:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch members' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    return apiError(`查詢會員失敗：${errorMessage}`, 500)
   }
 }
 

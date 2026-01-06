@@ -1,19 +1,36 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
+import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
+import { validateMeeting } from '@/lib/validation'
+
+export const dynamic = 'force-dynamic'
 
 export async function PUT(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { date, status } = await request.json()
+    const { data: body, error: parseError } = await safeJsonParse<{ date?: string; status?: string }>(request)
+    
+    if (parseError || !body) {
+      return apiError('請求格式錯誤：無法解析 JSON', 400)
+    }
+
+    const { date, status } = body
     const id = parseInt(params.id)
 
+    if (isNaN(id) || id <= 0) {
+      return apiError('會議 ID 無效', 400)
+    }
+
     if (!date) {
-      return NextResponse.json(
-        { error: 'Date is required' },
-        { status: 400 }
-      )
+      return apiError('日期為必填欄位', 400)
+    }
+
+    // 驗證輸入
+    const validation = validateMeeting({ date, status })
+    if (!validation.valid) {
+      return apiError(validation.error || '輸入驗證失敗', 400)
     }
 
     console.log('更新會議:', { id, date, status })
@@ -35,20 +52,15 @@ export async function PUT(
         id,
       })
       
-      return NextResponse.json(
-        { error: `更新會議失敗：${error.message || '資料庫錯誤'}` },
-        { status: 500 }
-      )
+      return apiError(`更新會議失敗：${handleDatabaseError(error)}`, 500)
     }
 
     console.log('會議更新成功:', data)
-    return NextResponse.json({ success: true, data })
+    return apiSuccess(data)
   } catch (error) {
     console.error('Error updating meeting:', error)
-    return NextResponse.json(
-      { error: 'Failed to update meeting' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    return apiError(`更新會議失敗：${errorMessage}`, 500)
   }
 }
 
@@ -58,6 +70,10 @@ export async function DELETE(
 ) {
   try {
     const id = parseInt(params.id)
+
+    if (isNaN(id) || id <= 0) {
+      return apiError('會議 ID 無效', 400)
+    }
 
     // 獲取會議信息
     const { data: meeting } = await insforge.database
@@ -98,20 +114,15 @@ export async function DELETE(
         id,
       })
       
-      return NextResponse.json(
-        { error: `刪除會議失敗：${error.message || '資料庫錯誤'}` },
-        { status: 500 }
-      )
+      return apiError(`刪除會議失敗：${handleDatabaseError(error)}`, 500)
     }
 
     console.log('會議刪除成功:', data)
-    return NextResponse.json({ success: true, data })
+    return apiSuccess(data)
   } catch (error) {
     console.error('Error deleting meeting:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete meeting' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    return apiError(`刪除會議失敗：${errorMessage}`, 500)
   }
 }
 

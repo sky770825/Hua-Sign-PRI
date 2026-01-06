@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
+import { apiError, handleDatabaseError } from '@/lib/api-utils'
 
 // 標記為動態路由（因為使用了 request.url）
 export const dynamic = 'force-dynamic'

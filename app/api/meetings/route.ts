@@ -1,15 +1,28 @@
 import { NextResponse } from 'next/server'
 import { insforge, TABLES } from '@/lib/insforge'
+import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
+import { validateMeeting } from '@/lib/validation'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
-    const { date, status } = await request.json()
+    const { data: body, error: parseError } = await safeJsonParse<{ date?: string; status?: string }>(request)
+    
+    if (parseError || !body) {
+      return apiError('請求格式錯誤：無法解析 JSON', 400)
+    }
+
+    const { date, status } = body
 
     if (!date) {
-      return NextResponse.json(
-        { error: 'Missing date field' },
-        { status: 400 }
-      )
+      return apiError('日期為必填欄位', 400)
+    }
+
+    // 驗證輸入
+    const validation = validateMeeting({ date, status })
+    if (!validation.valid) {
+      return apiError(validation.error || '輸入驗證失敗', 400)
     }
 
     // 檢查是否已存在
@@ -31,10 +44,7 @@ export async function POST(request: Request) {
 
       if (error) {
         console.error('Error updating meeting:', error)
-        return NextResponse.json(
-          { error: `更新會議失敗：${error.message || '資料庫錯誤'}` },
-          { status: 500 }
-        )
+        return apiError(`更新會議失敗：${handleDatabaseError(error)}`, 500)
       }
       
       console.log('會議已更新:', data)
@@ -47,22 +57,17 @@ export async function POST(request: Request) {
 
       if (error) {
         console.error('Error creating meeting:', error)
-        return NextResponse.json(
-          { error: `創建會議失敗：${error.message || '資料庫錯誤'}` },
-          { status: 500 }
-        )
+        return apiError(`創建會議失敗：${handleDatabaseError(error)}`, 500)
       }
       
       console.log('會議已創建:', data)
     }
 
-    return NextResponse.json({ success: true })
+    return apiSuccess()
   } catch (error) {
     console.error('Error creating/updating meeting:', error)
-    return NextResponse.json(
-      { error: 'Failed to create/update meeting' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    return apiError(`創建/更新會議失敗：${errorMessage}`, 500)
   }
 }
 
@@ -74,16 +79,15 @@ export async function GET() {
       .order('date', { ascending: false })
 
     if (error) {
-      throw error
+      console.error('Error fetching meetings:', error)
+      return apiError(`查詢會議失敗：${handleDatabaseError(error)}`, 500)
     }
 
     return NextResponse.json({ meetings: meetings || [] })
   } catch (error) {
     console.error('Error fetching meetings:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch meetings' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    return apiError(`查詢會議失敗：${errorMessage}`, 500)
   }
 }
 

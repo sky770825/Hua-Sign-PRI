@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { insforge, insforgeService, TABLES, BUCKETS } from '@/lib/insforge'
+import { apiError, handleDatabaseError } from '@/lib/api-utils'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
@@ -9,16 +12,15 @@ export async function GET() {
       .order('id', { ascending: false })
 
     if (error) {
-      throw error
+      console.error('Error fetching prizes:', error)
+      return apiError(`查詢獎品失敗：${handleDatabaseError(error)}`, 500)
     }
 
     return NextResponse.json({ prizes: prizes || [] })
   } catch (error) {
     console.error('Error fetching prizes:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch prizes' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : '未知錯誤'
+    return apiError(`查詢獎品失敗：${errorMessage}`, 500)
   }
 }
 
