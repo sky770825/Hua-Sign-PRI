@@ -106,30 +106,21 @@ export async function DELETE(
     const id = parseInt(params.id)
     console.log('刪除會員:', { id })
 
-    // 檢查會員是否存在
+    // 檢查會員是否存在（使用 maybeSingle 避免找不到時拋出錯誤）
     const { data: member, error: fetchError } = await insforge.database
       .from(TABLES.MEMBERS)
       .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
     if (fetchError) {
-      // 如果是查詢錯誤（不是找不到），返回 500
-      if (fetchError.message && !fetchError.message.includes('No rows')) {
-        console.error('Error fetching member:', { id, fetchError })
-        return NextResponse.json(
-          { error: `查詢會員失敗：${fetchError.message || '資料庫錯誤'}` },
-          { status: 500 }
-        )
-      }
+      console.error('Error fetching member:', { id, fetchError })
+      return apiError(`查詢會員失敗：${handleDatabaseError(fetchError)}`, 500)
     }
     
     if (!member) {
       console.warn('Member not found:', { id })
-      return NextResponse.json(
-        { error: `會員不存在（編號：${id}）` },
-        { status: 404 }
-      )
+      return apiError(`會員不存在（編號：${id}），可能已被刪除`, 404)
     }
 
     // 檢查是否有簽到記錄引用此會員

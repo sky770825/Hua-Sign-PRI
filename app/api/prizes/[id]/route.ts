@@ -32,12 +32,12 @@ export async function PUT(
       return apiError(validation.error || '輸入驗證失敗', 400)
     }
 
-    // 獲取現有獎品信息
+    // 獲取現有獎品信息（使用 maybeSingle 避免找不到時拋出錯誤）
     const { data: existingPrize, error: fetchError } = await insforge.database
       .from(TABLES.PRIZES)
       .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
     if (fetchError) {
       console.error('Error fetching prize:', fetchError)
@@ -45,7 +45,7 @@ export async function PUT(
     }
     
     if (!existingPrize) {
-      return apiError(`獎品不存在（ID：${id}）`, 404)
+      return apiError(`獎品不存在（ID：${id}），可能已被刪除`, 404)
     }
 
     let imageUrl = existingPrize.image_url
@@ -261,7 +261,7 @@ export async function DELETE(
       .from(TABLES.PRIZES)
       .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
     if (fetchError) {
       console.error('Error fetching prize:', { id, fetchError })
@@ -270,7 +270,7 @@ export async function DELETE(
     
     if (!prize) {
       console.warn('Prize not found:', { id })
-      return apiError(`獎品不存在（ID：${id}）`, 404)
+      return apiError(`獎品不存在（ID：${id}），可能已被刪除`, 404)
     }
 
     // 檢查是否有中獎記錄引用此獎品
