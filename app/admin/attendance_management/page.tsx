@@ -479,6 +479,13 @@ export default function AttendanceManagement() {
       return
     }
 
+    // 如果目前選擇的日期沒有會議，直接提示，不送出簽到請求
+    if (!selectedMeeting) {
+      setToast({ message: '今天沒有會議，請先在上方建立會議後再簽到', type: 'error' })
+      setTimeout(() => setToast(null), 4000)
+      return
+    }
+
     setActionLoading(prev => ({ ...prev, [key]: true }))
     
     // 樂觀更新：立即更新簽到狀態

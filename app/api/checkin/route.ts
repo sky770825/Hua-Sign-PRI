@@ -53,20 +53,11 @@ export async function POST(request: Request) {
     }
 
     if (!existingMeeting) {
-      // 創建新會議
-      const { error: createMeetingError } = await insforge.database
-        .from(TABLES.MEETINGS)
-        .insert([{ date, status: 'scheduled' }])
-      
-      if (createMeetingError) {
-        console.error('Error creating meeting:', createMeetingError)
-        return NextResponse.json(
-          { error: `創建會議失敗：${createMeetingError.message || '資料庫錯誤'}` },
-          { status: 500 }
-        )
-      }
-      
-      console.log('新會議已創建:', { date })
+      // 沒有會議時，不允許簽到，回傳清楚的錯誤訊息
+      return NextResponse.json(
+        { error: '今天沒有會議，請先在後台建立會議後再簽到' },
+        { status: 400 }
+      )
     }
 
     const checkinStatus = status || 'present'
