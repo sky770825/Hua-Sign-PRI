@@ -1,11 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase 後端配置（僅從環境變數讀取，不硬編碼 key）
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+// 建置時若無 env，使用 placeholder 避免 createClient 拋錯「supabaseUrl 為必填項」
+// 僅在建置階段使用，執行時需在 Vercel 或 .env.local 設定真實值
+const PLACEHOLDER_URL = 'https://build-placeholder.supabase.co'
+const PLACEHOLDER_KEY = 'build-placeholder-key-not-for-runtime'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || PLACEHOLDER_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || PLACEHOLDER_KEY
 
 // 服務端 key 用於繞過 RLS、檔案上傳等
-let supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || supabaseAnonKey;
+let supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || supabaseAnonKey
 
 // 偵測錯誤的 key 格式：sbp_xxx 是 CLI token，不是 service_role JWT
 if (typeof window === 'undefined' && supabaseServiceKey && supabaseServiceKey.startsWith('sbp_')) {
@@ -14,15 +18,15 @@ if (typeof window === 'undefined' && supabaseServiceKey && supabaseServiceKey.st
     '當前值是 Supabase CLI access token (sbp_xxx)，不是 service_role key。\n' +
     '請前往 https://supabase.com/dashboard/project/sqgrnowrcvspxhuudrqc/settings/api\n' +
     '複製 service_role 的 JWT（格式為 eyJ...），更新 .env.local 中的 SUPABASE_SERVICE_KEY。\n'
-  );
-  supabaseServiceKey = supabaseAnonKey; // 暫時 fallback，避免崩潰
+  )
+  supabaseServiceKey = supabaseAnonKey
 }
 
 // 創建 Supabase 客戶端（用於一般資料庫操作）
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // 創建服務端客戶端（用於文件上傳，避免外鍵約束錯誤）
-export const supabaseService = createClient(supabaseUrl, supabaseServiceKey);
+export const supabaseService = createClient(supabaseUrl, supabaseServiceKey)
 
 // 表名常量（使用 estate_attendance_ 前綴）
 export const TABLES = {
