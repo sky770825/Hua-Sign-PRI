@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
-import { apiError, handleDatabaseError } from '@/lib/api-utils'
+import { apiError, handleDatabaseError, ensureSupabaseConfigured } from '@/lib/api-utils'
 import { withCache, CacheKeys, CacheConfig } from '@/lib/cache'
 
 export const dynamic = 'force-dynamic'
@@ -8,13 +8,9 @@ export const revalidate = 0
 export const fetchCache = 'force-no-store'
 
 export async function GET() {
+  const envErr = ensureSupabaseConfigured()
+  if (envErr) return envErr
   try {
-    // 若使用 placeholder 表示環境變數未設定，無法連線 Supabase
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-    if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
-      console.error('Members API: Supabase 環境變數未設定')
-      return apiError('後端 Supabase 未設定，請在 Vercel 環境變數中設定 NEXT_PUBLIC_SUPABASE_URL', 503)
-    }
     const members = await withCache(
       CacheKeys.MEMBERS,
       async () => {
