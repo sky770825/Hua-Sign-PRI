@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  async rewrites() {
+    return [{ source: '/health', destination: '/api/health' }]
+  },
   // 隱藏 Next.js 開發工具指示器（nextjs-portal）
   devIndicators: false,
   // 安全標頭
