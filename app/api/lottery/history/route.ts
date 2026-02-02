@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
+import { ensureSupabaseConfigured } from '@/lib/api-utils'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -9,6 +10,8 @@ export const revalidate = 0
  * 用於獎品管理頁面的「歷史獲獎紀錄」區塊
  */
 export async function GET(request: Request) {
+  const envErr = ensureSupabaseConfigured()
+  if (envErr) return envErr
   try {
     const { searchParams } = new URL(request.url)
     const limit = Math.min(parseInt(searchParams.get('limit') || '50') || 50, 200)

@@ -81,6 +81,21 @@ export async function safeJsonParse<T = any>(request: Request): Promise<{ data: 
 }
 
 /**
+ * 檢查 Supabase 環境變數是否已設定（避免使用 placeholder 時連線失敗）
+ * 若未設定，回傳 503 錯誤 Response；否則回傳 null
+ */
+export function ensureSupabaseConfigured(): NextResponse | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  if (!url || url.includes('placeholder')) {
+    return apiError(
+      '後端 Supabase 未設定。請在 Vercel 環境變數設定：NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_ANON_KEY、SUPABASE_SERVICE_KEY',
+      503
+    )
+  }
+  return null
+}
+
+/**
  * 處理資料庫錯誤，返回中文錯誤訊息
  */
 export function handleDatabaseError(error: any, defaultMessage: string = '資料庫錯誤'): string {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
-import { apiError, apiSuccess } from '@/lib/api-utils'
+import { apiError, apiSuccess, ensureSupabaseConfigured } from '@/lib/api-utils'
 import { handleDatabaseError } from '@/lib/api-utils'
 
 export const dynamic = 'force-dynamic'
@@ -12,6 +12,8 @@ export const fetchCache = 'force-no-store'
  * 供前端只打 1 次請求即可渲染出席管理（當日簽到從 checkinsByDate[date] 取）
  */
 export async function GET() {
+  const envErr = ensureSupabaseConfigured()
+  if (envErr) return envErr
   try {
     const [membersRes, meetingsRes] = await Promise.all([
       supabaseService.from(TABLES.MEMBERS).select('id, name, profession').order('id', { ascending: true }),

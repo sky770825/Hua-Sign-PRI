@@ -12,6 +12,7 @@ export default function CheckinPage() {
   const [meetingStatus, setMeetingStatus] = useState('今日無例會')
   const [today, setToday] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
@@ -102,16 +103,18 @@ export default function CheckinPage() {
 
   // 加载数据的函数
   const loadData = useCallback(async () => {
+    setLoadError(null)
     try {
       const todayDate = new Date().toISOString().split('T')[0]
       setToday(todayDate)
 
       // 获取会员列表
       const membersRes = await fetch('/api/members')
+      const membersData = await membersRes.json().catch(() => ({}))
       if (!membersRes.ok) {
-        throw new Error('Failed to fetch members')
+        const errMsg = membersData?.error || '無法載入會員名單'
+        throw new Error(errMsg)
       }
-      const membersData = await membersRes.json()
       setMembers(membersData.members || [])
 
       // 获取今天的签到记录
@@ -137,7 +140,8 @@ export default function CheckinPage() {
       }
     } catch (err) {
       console.error('Error fetching data:', err)
-      alert('載入資料失敗，請重新整理頁面')
+      setLoadError(err instanceof Error ? err.message : '載入資料失敗')
+      setMembers([])
     } finally {
       setLoading(false)
     }
@@ -372,6 +376,23 @@ export default function CheckinPage() {
           
           {/* 會員列表 - 響應式設計 */}
           <div className="space-y-4">
+            {/* 名單為空時的提示 */}
+            {!loading && sortedMembers.length === 0 && (
+              <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-6 text-center">
+                <p className="text-amber-800 font-semibold mb-2">
+                  {loadError ? '⚠️ 無法載入會員名單' : '暫無會員資料'}
+                </p>
+                <p className="text-amber-700 text-sm mb-4">
+                  {loadError || '請聯繫管理員匯入會員'}
+                </p>
+                <button
+                  onClick={() => { setLoading(true); loadData() }}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm"
+                >
+                  重新載入
+                </button>
+              </div>
+            )}
             {/* 桌面版表格 */}
             <div className="hidden md:block overflow-x-auto rounded-lg border border-gray-200 shadow-inner">
               <table className="w-full border-collapse bg-white">

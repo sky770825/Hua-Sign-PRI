@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase, supabaseService, TABLES, BUCKETS, STORAGE_PATHS, generateStoragePath } from '@/lib/supabase'
-import { apiError, apiSuccess, handleDatabaseError } from '@/lib/api-utils'
+import { apiError, apiSuccess, handleDatabaseError, ensureSupabaseConfigured } from '@/lib/api-utils'
 import { withCache, CacheKeys, CacheConfig, clearCacheByPrefix } from '@/lib/cache'
 
 export const dynamic = 'force-dynamic'
@@ -8,6 +8,8 @@ export const revalidate = 0
 export const fetchCache = 'force-no-store'
 
 export async function GET(request: Request) {
+  const envErr = ensureSupabaseConfigured()
+  if (envErr) return envErr
   try {
     // 抽獎頁面傳入 nocache=1 以確保獎品列表與抽獎 API 一致
     const { searchParams } = new URL(request.url || '', 'http://localhost')

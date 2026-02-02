@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
-import { apiError, apiSuccess } from '@/lib/api-utils'
+import { apiError, apiSuccess, ensureSupabaseConfigured } from '@/lib/api-utils'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -24,6 +24,8 @@ function parseDateRange(searchParams: URLSearchParams): { start: string | null; 
  * 【統計口徑】以「簽到記錄」為準；區間內總會議數 = 有簽到的日期數，每人每日只計一次。
  */
 export async function GET(request: Request) {
+  const envErr = ensureSupabaseConfigured()
+  if (envErr) return envErr
   try {
     const { searchParams } = new URL(request.url)
     const { start, end } = parseDateRange(searchParams)
