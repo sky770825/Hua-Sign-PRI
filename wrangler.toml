@@ -1,0 +1,15 @@
+# Cloudflare Pages 配置文件
+# 用於設置 Compatibility Flags 和其他配置
+
+name = "hua-sign-pri"
+
+# 設置 Compatibility Date（必須）
+compatibility_date = "2024-09-23"
+
+# 設置 Compatibility Flags（啟用 Node.js 兼容性）
+compatibility_flags = ["nodejs_compat"]
+
+# 注意：
+# - 這個文件會被 Cloudflare Pages 自動讀取
+# - 設置後需要重新部署才能生效
+# - compatibility_date 必須設置（不能只設置 flags）

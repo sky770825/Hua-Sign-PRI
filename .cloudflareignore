@@ -1,0 +1,35 @@
+# Cloudflare Pages 忽略文件
+# 排除不需要部署的文件和目錄
+
+# Next.js 緩存目錄（太大，無法部署）
+.next/cache
+.next/cache/webpack
+.next/cache/webpack/server-production
+.next/cache/webpack/client-production
+
+# 開發文件
+*.log
+.DS_Store
+node_modules
+
+# 測試文件
+*.test.js
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.ts
+*.spec.tsx
+
+# 文檔文件
+*.md
+!README.md
+
+# 腳本文件（不需要在生產環境）
+scripts/
+*.sh
+
+# 配置文件（可能包含敏感信息）
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
