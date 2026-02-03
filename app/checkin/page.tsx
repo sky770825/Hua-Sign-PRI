@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { debounce } from '@/lib/frontend-utils'
 import type { Member, CheckinRecord } from '@/types'
 
@@ -147,28 +147,30 @@ export default function CheckinPage() {
     }
   }, [])
 
+  // 初始載入 + 每30秒自動刷新（只依賴 loadData，避免過度重跑）
   useEffect(() => {
-    // 初始加载数据
     loadData()
-
-    // 每30秒自动刷新数据（实时同步）
     const interval = setInterval(loadData, 30000)
-    
-    // 键盘快捷键支持：Enter键提交签到
+    return () => clearInterval(interval)
+  }, [loadData])
+
+  // 鍵盤快捷鍵：Ctrl/Cmd+Enter 提交簽到（獨立 effect，用 ref 避免 deps 導致重跑）
+  const submitCheckinRef = useRef(submitCheckin)
+  const selectedMemberRef = useRef(selectedMember)
+  const submittingRef = useRef(submitting)
+  submitCheckinRef.current = submitCheckin
+  selectedMemberRef.current = selectedMember
+  submittingRef.current = submitting
+  useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && selectedMember && !submitting) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && selectedMemberRef.current && !submittingRef.current) {
         e.preventDefault()
-        submitCheckin()
+        submitCheckinRef.current()
       }
     }
-    
     window.addEventListener('keydown', handleKeyPress)
-    
-    return () => {
-      clearInterval(interval)
-      window.removeEventListener('keydown', handleKeyPress)
-    }
-  }, [loadData, selectedMember, submitting, submitCheckin])
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [])
 
   const getCheckinStatus = useCallback((memberId: number) => {
     const checkin = checkins[memberId]

@@ -71,16 +71,24 @@ export async function GET() {
       profession: string
     }>> = {}
     const meetingStats: Record<string, number> = {}
+    // 每人每場只計一次（同一 member_id + meeting_date 取最新一筆，避免重複紀錄造成多算）
+    const seenPerDate = new Map<string, Set<number>>()
 
     for (const c of checkins) {
       const date = (c as any).meeting_date
       if (!date) continue
+      const memberId = (c as any).member_id
+      if (!byDate[date]) byDate[date] = []
+      if (!seenPerDate.has(date)) seenPerDate.set(date, new Set())
+      const seen = seenPerDate.get(date)!
+      if (seen.has(memberId)) continue
+      seen.add(memberId)
+
       const member = Array.isArray((c as any).estate_attendance_members)
         ? (c as any).estate_attendance_members[0]
         : (c as any).estate_attendance_members
-      if (!byDate[date]) byDate[date] = []
       byDate[date].push({
-        member_id: (c as any).member_id,
+        member_id: memberId,
         checkin_time: (c as any).checkin_time,
         message: (c as any).message,
         status: (c as any).status ?? 'absent',

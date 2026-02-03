@@ -109,6 +109,25 @@ export default function AttendanceManagement() {
   const [statsRangeLabel, setStatsRangeLabel] = useState<string>('全部')
   const [statsSortBy, setStatsSortBy] = useState<'id' | 'name' | 'profession' | 'total' | 'present' | 'late' | 'proxy' | 'absent' | 'rate'>('id')
   const [statsSortOrder, setStatsSortOrder] = useState<'asc' | 'desc'>('asc')
+  /** 統計報表子 Tab：會員出席統計 | 關注名單 */
+  const [statsReportsSubTab, setStatsReportsSubTab] = useState<'stats' | 'care'>('stats')
+  const [careList, setCareList] = useState<Array<{
+    memberId: number
+    name: string
+    profession: string
+    total: number
+    present: number
+    absent: number
+    rate: number
+    consecutiveAbsences: number
+    lastAttendanceDate: string | null
+    daysSinceLastAttendance: number | null
+    trend: 'up' | 'flat' | 'down' | null
+    riskLevel: 'high' | 'medium' | 'low' | null
+  }>>([])
+  const [careListLoading, setCareListLoading] = useState(false)
+  const [careListSummary, setCareListSummary] = useState({ high: 0, medium: 0, low: 0 })
+  const [careListFilter, setCareListFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all')
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' })
   const [systemSettings, setSystemSettings] = useState({ autoBackup: false, emailNotifications: false, defaultMeetingTime: '19:00', checkinDeadline: '19:30' })
@@ -129,6 +148,7 @@ export default function AttendanceManagement() {
     }
   }, [])
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
+  const [syncToSheetsLoading, setSyncToSheetsLoading] = useState(false)
   const [prizes, setPrizes] = useState<Array<{
     id: number
     name: string
@@ -478,12 +498,35 @@ export default function AttendanceManagement() {
     }
   }, [])
 
-  // 當切換到統計報表標籤時，依目前區間載入統計
+  const loadCareList = useCallback(async (start?: string, end?: string) => {
+    setCareListLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (start) params.set('start', start)
+      if (end) params.set('end', end)
+      const url = '/api/statistics/care-list' + (params.toString() ? '?' + params.toString() : '')
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && data.data) {
+          setCareList(data.data.careList || [])
+          setCareListSummary(data.data.summary || { high: 0, medium: 0, low: 0 })
+        }
+      }
+    } catch (error) {
+      console.error('載入關注名單失敗:', error)
+    } finally {
+      setCareListLoading(false)
+    }
+  }, [])
+
+  // 當切換到統計報表標籤時，依目前區間載入統計與關注名單
   useEffect(() => {
     if (activeTab === 'reports') {
       loadMemberStats(statsDateStart || undefined, statsDateEnd || undefined)
+      loadCareList(statsDateStart || undefined, statsDateEnd || undefined)
     }
-  }, [activeTab, statsDateStart, statsDateEnd, loadMemberStats])
+  }, [activeTab, statsDateStart, statsDateEnd, loadMemberStats, loadCareList])
 
   // 圖片預覽開啟時鎖住背景捲動
   useEffect(() => {
@@ -586,11 +629,23 @@ export default function AttendanceManagement() {
     return rows
   }, [members, memberAttendanceStats, statsSortBy, statsSortOrder])
 
-  const sortedMeetingsTop10 = useMemo(() => {
-    return [...meetings]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 10)
+  /** 會議歷史：可依月份篩選，預設顯示最近 20 筆 */
+  const [meetingHistoryMonth, setMeetingHistoryMonth] = useState<string>('')
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of meetings) {
+      const d = m.date
+      if (d && d.length >= 7) set.add(d.slice(0, 7)) // YYYY-MM
+    }
+    return Array.from(set).sort().reverse()
   }, [meetings])
+  const filteredMeetingsForHistory = useMemo(() => {
+    let list = [...meetings].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    if (meetingHistoryMonth) {
+      list = list.filter(m => m.date.startsWith(meetingHistoryMonth))
+    }
+    return list.slice(0, 100) // 單月或全部最多顯示 100 筆
+  }, [meetings, meetingHistoryMonth])
 
   /** 會議管理用的排序後會議列表：可依日期或「有簽到的優先」 */
   const sortedMeetingsForManagement = useMemo(() => {
@@ -1528,6 +1583,8 @@ export default function AttendanceManagement() {
   }
 
   const handleSyncToSheets = async () => {
+    if (syncToSheetsLoading) return
+    setSyncToSheetsLoading(true)
     try {
       setToast({ message: '正在同步到 Google Sheets...', type: 'success' })
       setTimeout(() => setToast(null), 2000)
@@ -1550,6 +1607,8 @@ export default function AttendanceManagement() {
       console.error('同步到 Google Sheets 失敗:', error)
       setToast({ message: '同步失敗：網路錯誤或伺服器無回應', type: 'error' })
       setTimeout(() => setToast(null), 4000)
+    } finally {
+      setSyncToSheetsLoading(false)
     }
   }
 
@@ -2736,7 +2795,8 @@ export default function AttendanceManagement() {
                 </button>
                 <button
                   onClick={handleSyncToSheets}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold text-sm"
+                  disabled={syncToSheetsLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold text-sm disabled:opacity-50 disabled:cursor-wait"
                   title="同步會員資料到 Google Sheets"
                 >
                   📊 同步到 Sheets
@@ -2972,6 +3032,37 @@ export default function AttendanceManagement() {
               <p className="mt-2 text-sm text-gray-500">
                 目前：{statsDateStart && statsDateEnd ? `${statsDateStart} ～ ${statsDateEnd}` : '全部'}
               </p>
+
+              {/* 子 Tab：會員出席統計 | 關注名單 */}
+              <div className="mt-4 flex gap-2 border-b border-gray-200 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setStatsReportsSubTab('stats')}
+                  className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                    statsReportsSubTab === 'stats'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  👥 會員出席統計
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatsReportsSubTab('care')}
+                  className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors ${
+                    statsReportsSubTab === 'care'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  💝 關注名單
+                  {(careListSummary.high + careListSummary.medium + careListSummary.low) > 0 && (
+                    <span className="ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold bg-amber-400 text-amber-900 rounded-full">
+                      {careListSummary.high + careListSummary.medium + careListSummary.low}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Overall Statistics */}
@@ -2998,7 +3089,182 @@ export default function AttendanceManagement() {
               </div>
             </div>
 
-            {/* Member Attendance Statistics */}
+            {/* 關注名單區塊（子 Tab = care 時顯示） */}
+            {statsReportsSubTab === 'care' && (
+              <div className="space-y-6">
+                {/* 風險摘要卡片 */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4 sm:p-5 border-2 border-red-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xl">🔴</span>
+                      <span className="text-sm font-bold text-red-700">高風險（瀕臨流失）</span>
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-bold text-red-800">{careListSummary.high}</div>
+                    <p className="text-xs text-red-600 mt-1">連續缺席≥4次／出席率&lt;15%／逾60天未出席</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 sm:p-5 border-2 border-amber-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xl">🟠</span>
+                      <span className="text-sm font-bold text-amber-700">中風險（需要關注）</span>
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-bold text-amber-800">{careListSummary.medium}</div>
+                    <p className="text-xs text-amber-600 mt-1">連續缺席2～3次／出席率15～35%／30～60天未出席</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-4 sm:p-5 border-2 border-yellow-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xl">🟡</span>
+                      <span className="text-sm font-bold text-yellow-700">低風險（觀察名單）</span>
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-bold text-yellow-800">{careListSummary.low}</div>
+                    <p className="text-xs text-yellow-600 mt-1">連續缺席1次／出席率35～50%／趨勢下降</p>
+                  </div>
+                </div>
+
+                {/* 篩選與匯出 */}
+                <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4 sm:p-6 border border-gray-100">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <span>💝</span>
+                        <span>關注名單</span>
+                        {careListLoading && <span className="text-sm font-normal text-gray-500">載入中...</span>}
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-0.5">總會議數、出席次數依所選區間計算；新進會員總會議數較少屬正常</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <span className="text-sm text-gray-600">篩選：</span>
+                      <select
+                        value={careListFilter}
+                        onChange={(e) => setCareListFilter(e.target.value as typeof careListFilter)}
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="all">全部</option>
+                        <option value="high">🔴 高風險</option>
+                        <option value="medium">🟠 中風險</option>
+                        <option value="low">🟡 低風險</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const filtered = careListFilter === 'all'
+                            ? careList
+                            : careList.filter(c => c.riskLevel === careListFilter)
+                          const header = ['編號', '姓名', '專業別', '總會議數', '出席次數', '出席率', '連續缺席', '最後出席日', '距今天數', '趨勢', '風險等級']
+                          const rows = filtered.map(c => [
+                            c.memberId,
+                            c.name,
+                            c.profession,
+                            c.total,
+                            c.present,
+                            `${c.rate.toFixed(1)}%`,
+                            c.consecutiveAbsences,
+                            c.lastAttendanceDate || '從未出席',
+                            c.daysSinceLastAttendance !== null ? `${c.daysSinceLastAttendance} 天` : '-',
+                            c.trend === 'up' ? '↑上升' : c.trend === 'down' ? '↓下降' : c.trend === 'flat' ? '持平' : '-',
+                            c.riskLevel === 'high' ? '高風險' : c.riskLevel === 'medium' ? '中風險' : '低風險'
+                          ])
+                          const csv = [header.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n')
+                          const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
+                          const link = document.createElement('a')
+                          link.href = URL.createObjectURL(blob)
+                          link.download = `關注名單_${new Date().toISOString().split('T')[0]}.csv`
+                          link.click()
+                          URL.revokeObjectURL(link.href)
+                        }}
+                        className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 text-sm font-semibold"
+                      >
+                        📥 匯出 CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => loadCareList(statsDateStart || undefined, statsDateEnd || undefined)}
+                        disabled={careListLoading}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium disabled:opacity-50"
+                      >
+                        🔄 重新載入
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-gray-200">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gradient-to-r from-rose-50 to-amber-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">風險</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">編號</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">姓名</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">專業別</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">總會議數</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">出席次數</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">出席率</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">連續缺席</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">最後出席日</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">距今天數</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">趨勢</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {(careListFilter === 'all' ? careList : careList.filter(c => c.riskLevel === careListFilter)).map((item) => {
+                          const riskBadge = item.riskLevel === 'high'
+                            ? { bg: 'bg-red-100', text: 'text-red-800', label: '高風險' }
+                            : item.riskLevel === 'medium'
+                              ? { bg: 'bg-amber-100', text: 'text-amber-800', label: '中風險' }
+                              : { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '低風險' }
+                          const trendLabel = item.trend === 'up' ? '↑ 上升' : item.trend === 'down' ? '↓ 下降' : item.trend === 'flat' ? '持平' : '-'
+                          const trendColor = item.trend === 'up' ? 'text-green-600' : item.trend === 'down' ? 'text-red-600' : 'text-gray-500'
+                          return (
+                            <tr key={item.memberId} className="hover:bg-rose-50/50 transition-colors">
+                              <td className="px-4 py-3">
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${riskBadge.bg} ${riskBadge.text}`}>
+                                  {riskBadge.label}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm font-semibold text-gray-900">#{item.memberId}</td>
+                              <td className="px-4 py-3 text-sm font-bold text-gray-900">{item.name}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{item.profession}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600 font-medium" title="此區間內的總會議數（新進會員可能較少）">{item.total}</td>
+                              <td className="px-4 py-3 text-sm font-semibold text-green-600">{item.present}</td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${
+                                        item.rate >= 50 ? 'bg-green-500' : item.rate >= 25 ? 'bg-amber-500' : 'bg-red-500'
+                                      }`}
+                                      style={{ width: `${Math.min(100, item.rate)}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-sm font-semibold text-gray-700">{item.rate.toFixed(1)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-sm font-bold text-red-600">{item.consecutiveAbsences} 次</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{item.lastAttendanceDate || '從未出席'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">
+                                {item.daysSinceLastAttendance !== null ? `${item.daysSinceLastAttendance} 天` : '-'}
+                              </td>
+                              <td className={`px-4 py-3 text-sm font-medium ${trendColor}`}>{trendLabel}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    {careList.length === 0 && !careListLoading && (
+                      <div className="py-12 text-center text-gray-500">
+                        <p className="text-lg font-medium">目前無需關注的會員</p>
+                        <p className="text-sm mt-1">表示大家都在穩定參與，加油！</p>
+                      </div>
+                    )}
+                    {careList.length === 0 && careListLoading && (
+                      <div className="py-12 text-center text-gray-500">載入中...</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Member Attendance Statistics + Meeting History（子 Tab = stats 時顯示） */}
+            {statsReportsSubTab === 'stats' && (
+            <>
             <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4 sm:p-6 border border-gray-100">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                 <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -3116,7 +3382,26 @@ export default function AttendanceManagement() {
 
             {/* Meeting History */}
             <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4 sm:p-6 border border-gray-100">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">會議歷史記錄</h3>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                <h3 className="text-lg font-bold text-gray-900">會議歷史記錄</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">月份：</span>
+                  <select
+                    value={meetingHistoryMonth}
+                    onChange={(e) => setMeetingHistoryMonth(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="">全部（最近 100 筆）</option>
+                    {availableMonths.map((ym) => {
+                      const [y, m] = ym.split('-')
+                      const label = `${y}年${parseInt(m, 10)}月`
+                      return (
+                        <option key={ym} value={ym}>{label}</option>
+                      )
+                    })}
+                  </select>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gradient-to-r from-indigo-50 to-purple-50">
@@ -3128,7 +3413,7 @@ export default function AttendanceManagement() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {sortedMeetingsTop10.map((meeting) => {
+                    {filteredMeetingsForHistory.map((meeting) => {
                         const checkinCount = meetingStats[meeting.date] || 0
                         const attendanceRate = members.length > 0 ? ((checkinCount / members.length) * 100).toFixed(1) : '0'
                         return (
@@ -3152,8 +3437,19 @@ export default function AttendanceManagement() {
                       })}
                   </tbody>
                 </table>
+                {filteredMeetingsForHistory.length === 0 && (
+                  <div className="py-8 text-center text-gray-500 text-sm">該區間尚無會議記錄</div>
+                )}
               </div>
+              {filteredMeetingsForHistory.length > 0 && (
+                <p className="mt-2 text-xs text-gray-500">
+                  共顯示 {filteredMeetingsForHistory.length} 筆
+                  {meetingHistoryMonth && `（${meetingHistoryMonth.slice(0, 4)}年${parseInt(meetingHistoryMonth.slice(5), 10)}月）`}
+                </p>
+              )}
             </div>
+            </>
+            )}
           </div>
         )}
 

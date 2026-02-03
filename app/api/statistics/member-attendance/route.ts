@@ -17,11 +17,18 @@ function parseDateRange(searchParams: URLSearchParams): { start: string | null; 
   }
 }
 
+/** 新成員編號門檻：此編號（含）以後視為新成員，其總會議數僅計「有簽到的會議」 */
+const NEW_MEMBER_ID_CUTOFF = 76
+/** 新成員起始會議日：8/14 起的會議才計入新成員的總會議（此前尚未入會） */
+const NEW_MEMBER_MEETING_START = '2024-08-14'
+
 /**
  * 獲取會員出席統計（可選日期區間）
  * Query: start=YYYY-MM-DD, end=YYYY-MM-DD（可選；未帶則全期間）
  *
- * 【統計口徑】以「簽到記錄」為準；區間內總會議數 = 有簽到的日期數，每人每日只計一次。
+ * 【統計口徑】以「簽到記錄」為準；每人每日只計一次。
+ * - 舊成員（編號 < 76）：總會議數 = 區間內所有會議數
+ * - 新成員（編號 >= 76）：總會議數 = 僅計有簽到過的會議（且須為 8/14 之後），未簽到的不算
  */
 export async function GET(request: Request) {
   const envErr = ensureSupabaseConfigured()
@@ -102,74 +109,79 @@ export async function GET(request: Request) {
       rate: number 
     }> = {}
 
-    // 初始化所有會員的統計
-    for (const memberId of memberIds) {
-      memberStats[memberId] = {
-        total: totalMeetings,
-        present: 0,
-        late: 0,
-        proxy: 0,
-        absent: 0,
-        rate: 0
-      }
-    }
-
     const actualMeetingDatesSet = new Set(actualMeetingDates)
 
     // 同一會員、同一會議日期只計一次出席（避免重複簽到紀錄造成多算）
     const countedKey = (memberId: number, meetingDate: string) => `${memberId}-${meetingDate}`
 
-    // 統計每個會員的各類出席次數（僅統計屬於「有效會議」的簽到，且每人每場只計一次）
+    // 新成員：僅計「有簽到過的會議」為總會議；紀錄每人每場的 meeting_date 集合
+    const memberMeetingDatesWithCheckin = new Map<number, Set<string>>()
+
+    // 統計每個會員的各類出席次數
     const seen = new Set<string>()
     for (const checkin of checkins || []) {
       if (!actualMeetingDatesSet.has(checkin.meeting_date)) continue
 
       const memberId = checkin.member_id
-      if (!memberStats[memberId]) continue
+      const meetingDate = checkin.meeting_date
 
-      const key = countedKey(memberId, checkin.meeting_date)
+      const key = countedKey(memberId, meetingDate)
       if (seen.has(key)) continue
       seen.add(key)
+
+      const isNewMember = memberId >= NEW_MEMBER_ID_CUTOFF
+      const meetingAfterStart = meetingDate >= NEW_MEMBER_MEETING_START
+
+      if (!memberStats[memberId]) {
+        memberStats[memberId] = {
+          total: 0,
+          present: 0,
+          late: 0,
+          proxy: 0,
+          absent: 0,
+          rate: 0
+        }
+      }
+      if (!memberMeetingDatesWithCheckin.has(memberId)) {
+        memberMeetingDatesWithCheckin.set(memberId, new Set())
+      }
+
+      // 新成員：僅 8/14 後有簽到的會議才計入總會議
+      if (isNewMember && meetingAfterStart) {
+        memberMeetingDatesWithCheckin.get(memberId)!.add(meetingDate)
+      }
 
       const status = checkin.status || 'absent'
       const message = (checkin.message || '').toLowerCase()
 
-      // 判斷是否為代理出席（從留言中判斷，包含「代理」、「代」、「替」等關鍵字）
-      const isProxy = message.includes('代理') || 
-                     message.includes('代') || 
-                     message.includes('替') ||
-                     message.includes('proxy')
+      const isProxy = message.includes('代理') || message.includes('代') || message.includes('替') || message.includes('proxy')
 
       if (status === 'present' || status === 'early' || status === 'proxy') {
-        // 正常出席、早到、或代理出席
         memberStats[memberId].present++
-        if (status === 'proxy' || isProxy) {
-          memberStats[memberId].proxy++
-        }
+        if (status === 'proxy' || isProxy) memberStats[memberId].proxy++
       } else if (status === 'late') {
-        // 遲到
         memberStats[memberId].present++
         memberStats[memberId].late++
-        if (isProxy) {
-          memberStats[memberId].proxy++
-        }
+        if (isProxy) memberStats[memberId].proxy++
       } else if (status === 'early_leave') {
-        // 早退（也算出席）
         memberStats[memberId].present++
-        if (isProxy) {
-          memberStats[memberId].proxy++
-        }
+        if (isProxy) memberStats[memberId].proxy++
       }
-      // absent 狀態不需要處理，因為缺席次數 = 總會議數 - 出席次數
     }
 
-    // 計算缺席次數和出席率
-    for (const memberId of Object.keys(memberStats)) {
-      const stat = memberStats[parseInt(memberId)]
-      // 缺席次數 = 總會議數 - 出席次數（包含所有出席狀態）
-      stat.absent = stat.total - stat.present
-      // 出席率 = 出席次數 / 總會議數 * 100
-      stat.rate = stat.total > 0 
+    // 初始化未出現過的會員，並設定總會議數
+    for (const memberId of memberIds) {
+      if (!memberStats[memberId]) {
+        memberStats[memberId] = { total: 0, present: 0, late: 0, proxy: 0, absent: 0, rate: 0 }
+      }
+      const stat = memberStats[memberId]
+      if (memberId >= NEW_MEMBER_ID_CUTOFF) {
+        stat.total = memberMeetingDatesWithCheckin.get(memberId)?.size ?? 0
+      } else {
+        stat.total = totalMeetings
+      }
+      stat.absent = Math.max(0, stat.total - stat.present)
+      stat.rate = stat.total > 0
         ? Math.max(0, Math.min(100, (stat.present / stat.total) * 100))
         : 0
     }

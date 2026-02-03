@@ -19,6 +19,8 @@
     "build:cloudflare": "next build && rm -rf .next/cache .next/cache/webpack",
     "start": "next start",
     "lint": "next lint",
+    "setup:vercel": "bash scripts/setup-vercel-env.sh",
+    "deploy:vercel": "bash scripts/deploy-vercel.sh",
     "deploy:cloudflare": "bash scripts/deploy-cloudflare.sh",
     "setup:cloudflare": "bash scripts/setup-cloudflare.sh",
     "deploy:cloudflare:auto": "bash scripts/deploy-to-cloudflare-pages.sh",
