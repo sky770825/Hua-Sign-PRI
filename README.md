@@ -55,6 +55,15 @@ npm start
 
 ## 部署
 
+### 部署到 Vercel
+
+1. 開啟 [vercel.com](https://vercel.com) → **Add New** → **Project**
+2. 選擇 GitHub 倉庫 `sky770825/Hua-Sign-PRI`
+3. 設定環境變數（Supabase URL、Anon Key、Service Key）
+4. 點 **Deploy**
+
+詳見 [部署到Vercel.md](./部署到Vercel.md)
+
 ### 本地部署
 
 ```bash
@@ -64,12 +73,6 @@ npm run build
 # 啟動生產服務器
 npm start
 ```
-
-### 自動化部署
-
-專案已整合 Cursor 自動化指揮官，支援自動化部署流程。
-
-詳見 `cursor自動化指揮官/` 目錄中的相關文檔。
 
 ## 部署注意事項
 
