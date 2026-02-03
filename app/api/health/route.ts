@@ -17,12 +17,17 @@ export async function GET() {
   const serviceKeyLooksJwt = serviceKey.startsWith('eyJ')
   const serviceKeyIsSbp = serviceKey.startsWith('sbp_')
 
+  // 列出實際存在的 Supabase 相關變數名稱（助於診斷 Vercel 設定）
+  const supabaseEnvKeys = Object.keys(process.env).filter((k) =>
+    /^SUPABASE|^NEXT_PUBLIC_SUPABASE/i.test(k)
+  )
+
   if (!hasUrl) {
     return NextResponse.json({
       ok: false,
       message: 'Supabase 環境變數未設定',
       hint: '請在 Vercel Settings > Environment Variables 設定 NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_ANON_KEY、SUPABASE_SERVICE_KEY 或 SUPABASE_SERVICE_ROLE_KEY，然後重新部署',
-      env: { hasUrl: false, hasAnonKey: false, hasServiceKey: false },
+      env: { hasUrl: false, hasAnonKey: false, hasServiceKey: false, supabaseEnvKeys },
     }, { status: 503 })
   }
 
@@ -42,7 +47,7 @@ export async function GET() {
           : !serviceKeyLooksJwt
             ? '請設定 SUPABASE_SERVICE_KEY 或 SUPABASE_SERVICE_ROLE_KEY 為 service_role JWT（eyJ 開頭）'
             : '請確認 Supabase 專案未暫停，且 service_role key 正確',
-        env: { hasUrl: true, hasAnonKey: hasAnonKey, hasServiceKey: hasServiceKey, serviceKeyLooksJwt, serviceKeyIsSbp },
+        env: { hasUrl: true, hasAnonKey: hasAnonKey, hasServiceKey: hasServiceKey, serviceKeyLooksJwt, serviceKeyIsSbp, supabaseEnvKeys },
       }, { status: 500 })
     }
 
@@ -50,7 +55,7 @@ export async function GET() {
       ok: true,
       message: 'Supabase 連線正常',
       membersCount: data?.length ?? 0,
-      env: { hasUrl: true, hasAnonKey: true, hasServiceKey: true },
+      env: { hasUrl: true, hasAnonKey: true, hasServiceKey: true, supabaseEnvKeys },
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -63,7 +68,7 @@ export async function GET() {
         : msg.includes('fetch') || msg.includes('ECONNREFUSED')
           ? '無法連線 Supabase，請確認專案未暫停'
           : '請檢查 Vercel 環境變數設定',
-      env: { hasUrl: true, hasAnonKey: hasAnonKey, hasServiceKey: hasServiceKey },
+      env: { hasUrl: true, hasAnonKey: hasAnonKey, hasServiceKey: hasServiceKey, supabaseEnvKeys },
     }, { status: 500 })
   }
 }
