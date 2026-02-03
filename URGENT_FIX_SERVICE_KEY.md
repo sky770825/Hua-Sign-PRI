@@ -6,7 +6,7 @@
 
 **根本原因**: `.env.local` 中的 `SUPABASE_SERVICE_KEY` 是 Supabase CLI access token，不是資料庫的 service_role key
 
-**當前值**: `sbp_130954eab0bf658b15326596c3b04cb568801e03`
+**錯誤範例**: `sbp_xxxx...`（Supabase CLI token，不可用於 API）
 
 ## ✅ 解決方案
 
@@ -32,12 +32,12 @@
 編輯 `.env.local` 文件，將 `SUPABASE_SERVICE_KEY` 更新為正確的 service_role key：
 
 ```bash
-# Supabase 配置
-NEXT_PUBLIC_SUPABASE_URL=https://sqgrnowrcvspxhuudrqc.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxZ3Jub3dyY3ZzcHhodXVkcnFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMTExNjYsImV4cCI6MjA4Mzc4NzE2Nn0.VMg-7oQTmPapHLGeLzEZ3l_5zcyCZRjJdw_X2J-8kRw
+# Supabase 配置（從 Dashboard > Settings > API 取得）
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
 
-# ⚠️ 重要：Supabase Service Role Key（必須是 JWT token，不是 CLI token）
-SUPABASE_SERVICE_KEY=你的_service_role_key_在這裡（完整的 JWT token）
+# ⚠️ 重要：必須是 service_role 的 JWT（eyJ 開頭），不能用 sbp_ 開頭的 CLI token
+SUPABASE_SERVICE_KEY=your_service_role_jwt_here
 ```
 
 ### 步驟 3: 重新啟動開發伺服器
@@ -60,8 +60,8 @@ curl http://localhost:3000/api/prizes
 
 ## 🔑 重要區別
 
-### ❌ 錯誤的 key（當前使用）
-- `sbp_130954eab0bf658b15326596c3b04cb568801e03`
+### ❌ 錯誤的 key（勿使用）
+- `sbp_xxxx...` 格式
 - 這是 Supabase CLI access token
 - 用於 CLI 操作，不能用於資料庫 API
 
