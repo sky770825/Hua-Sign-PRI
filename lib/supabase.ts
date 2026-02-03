@@ -8,8 +8,8 @@ const PLACEHOLDER_KEY = 'build-placeholder-key-not-for-runtime'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || PLACEHOLDER_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || PLACEHOLDER_KEY
 
-// 服務端 key 用於繞過 RLS、檔案上傳等
-let supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || supabaseAnonKey
+// 服務端 key 用於繞過 RLS、檔案上傳等（支援兩種常見變數名稱）
+let supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey
 
 // 偵測錯誤的 key 格式：sbp_xxx 是 CLI token，不是 service_role JWT
 if (typeof window === 'undefined' && supabaseServiceKey && supabaseServiceKey.startsWith('sbp_')) {

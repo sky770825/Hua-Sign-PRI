@@ -12,15 +12,16 @@ export async function GET() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
   const hasUrl = !!url && !url.includes('placeholder')
   const hasAnonKey = !!(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').replace(/^.*placeholder.*$/i, '')
-  const hasServiceKey = !!(process.env.SUPABASE_SERVICE_KEY || '').replace(/^.*placeholder.*$/i, '')
-  const serviceKeyLooksJwt = (process.env.SUPABASE_SERVICE_KEY || '').startsWith('eyJ')
-  const serviceKeyIsSbp = (process.env.SUPABASE_SERVICE_KEY || '').startsWith('sbp_')
+  const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+  const hasServiceKey = !!serviceKey && !serviceKey.toLowerCase().includes('placeholder')
+  const serviceKeyLooksJwt = serviceKey.startsWith('eyJ')
+  const serviceKeyIsSbp = serviceKey.startsWith('sbp_')
 
   if (!hasUrl) {
     return NextResponse.json({
       ok: false,
       message: 'Supabase 環境變數未設定',
-      hint: '請在 Vercel Settings > Environment Variables 設定 NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_ANON_KEY、SUPABASE_SERVICE_KEY，然後重新部署',
+      hint: '請在 Vercel Settings > Environment Variables 設定 NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_ANON_KEY、SUPABASE_SERVICE_KEY 或 SUPABASE_SERVICE_ROLE_KEY，然後重新部署',
       env: { hasUrl: false, hasAnonKey: false, hasServiceKey: false },
     }, { status: 503 })
   }
@@ -37,9 +38,9 @@ export async function GET() {
         message: 'Supabase 查詢失敗',
         errorCode: (error as any).code || 'UNKNOWN',
         hint: serviceKeyIsSbp
-          ? 'SUPABASE_SERVICE_KEY 使用了 sbp_ 開頭的 CLI token，請改用 service_role 的 JWT（eyJ 開頭）'
+          ? 'service_key 使用了 sbp_ 開頭的 CLI token，請改用 service_role 的 JWT（eyJ 開頭）'
           : !serviceKeyLooksJwt
-            ? '請確認 SUPABASE_SERVICE_KEY 為 service_role JWT，格式為 eyJ...'
+            ? '請設定 SUPABASE_SERVICE_KEY 或 SUPABASE_SERVICE_ROLE_KEY 為 service_role JWT（eyJ 開頭）'
             : '請確認 Supabase 專案未暫停，且 service_role key 正確',
         env: { hasUrl: true, hasAnonKey: hasAnonKey, hasServiceKey: hasServiceKey, serviceKeyLooksJwt, serviceKeyIsSbp },
       }, { status: 500 })
