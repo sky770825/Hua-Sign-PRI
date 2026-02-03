@@ -111,26 +111,23 @@ export default function AttendanceManagement() {
   const [statsSortOrder, setStatsSortOrder] = useState<'asc' | 'desc'>('asc')
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' })
-  const [systemSettings, setSystemSettings] = useState(() => {
-    if (typeof window === 'undefined') {
-      return { autoBackup: false, emailNotifications: false, defaultMeetingTime: '19:00', checkinDeadline: '19:30' }
-    }
+  const [systemSettings, setSystemSettings] = useState({ autoBackup: false, emailNotifications: false, defaultMeetingTime: '19:00', checkinDeadline: '19:30' })
+  useEffect(() => {
     try {
       const saved = localStorage.getItem('systemSettings')
       if (saved) {
         const parsed = JSON.parse(saved)
-        return {
+        setSystemSettings({
           autoBackup: !!parsed.autoBackup,
           emailNotifications: !!parsed.emailNotifications,
           defaultMeetingTime: parsed.defaultMeetingTime || '19:00',
           checkinDeadline: parsed.checkinDeadline || '19:30',
-        }
+        })
       }
     } catch (e) {
       console.warn('Failed to load systemSettings from localStorage:', e)
     }
-    return { autoBackup: false, emailNotifications: false, defaultMeetingTime: '19:00', checkinDeadline: '19:30' }
-  })
+  }, [])
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
   const [prizes, setPrizes] = useState<Array<{
     id: number
@@ -3567,7 +3564,9 @@ export default function AttendanceManagement() {
                 </div>
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <span>最後更新</span>
-                  <strong className="text-gray-900">{new Date().toLocaleDateString('zh-TW')}</strong>
+                  <strong className="text-gray-900" suppressHydrationWarning>
+                    {new Date().toLocaleDateString('zh-TW')}
+                  </strong>
                 </div>
               </div>
             </div>

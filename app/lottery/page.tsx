@@ -636,7 +636,7 @@ export default function LotteryPage() {
           <p className="text-center text-purple-100 text-sm sm:text-base">
             今日抽獎進度
             {lastRefreshTime && (
-              <span className="block text-xs text-purple-200 mt-1">
+              <span className="block text-xs text-purple-200 mt-1" suppressHydrationWarning>
                 最後更新：{lastRefreshTime.toLocaleTimeString('zh-TW')}
               </span>
             )}
