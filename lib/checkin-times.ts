@@ -26,6 +26,14 @@ export const LATE_THRESHOLD_MINS = parseTimeToMins(CHECKIN_TIMES.lateThreshold)
 export const LOTTERY_CUTOFF_MINS = parseTimeToMins(CHECKIN_TIMES.lotteryCutoff)
 
 /**
+ * 取得今日台北日期（YYYY-MM-DD）
+ */
+export function getTodayTaipei(): string {
+  const now = new Date()
+  return now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' })
+}
+
+/**
  * 取得目前台北時間的總分鐘數（當日 0:00 起算）
  */
 function getNowMinsTaipei(): { mins: number; dateStr: string } {

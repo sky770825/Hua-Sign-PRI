@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { debounce } from '@/lib/frontend-utils'
 import { ZOOM_MEETING_URL, ZOOM_MEETING_ID_DISPLAY } from '@/lib/meeting-config'
-import { getSigninTimeLabel, isSigninWindowOpen, CHECKIN_TIMES } from '@/lib/checkin-times'
+import { getSigninTimeLabel, isSigninWindowOpen, getTodayTaipei, CHECKIN_TIMES } from '@/lib/checkin-times'
 import type { Member, CheckinRecord } from '@/types'
 
 export default function CheckinPage() {
@@ -20,6 +20,8 @@ export default function CheckinPage() {
   const [submitting, setSubmitting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+
+  const isDevBypass = typeof window !== 'undefined' && (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1')
 
   const submitCheckin = useCallback(async () => {
     if (!selectedMember) {
@@ -48,6 +50,7 @@ export default function CheckinPage() {
           date: today,
           message: message.trim(),
           status: 'present',
+          ...(isDevBypass && { _testBypassTime: true }),
         }),
       })
 
@@ -83,7 +86,7 @@ export default function CheckinPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [selectedMember, meetingStatus, today, message, submitting])
+  }, [selectedMember, meetingStatus, today, message, submitting, isDevBypass])
 
   // 防抖處理搜尋詞
   useEffect(() => {
@@ -124,7 +127,7 @@ export default function CheckinPage() {
   const loadData = useCallback(async () => {
     setLoadError(null)
     try {
-      const todayDate = new Date().toISOString().split('T')[0]
+      const todayDate = getTodayTaipei()
       setToday(todayDate)
 
       // 會員與簽到並行請求
@@ -247,7 +250,8 @@ export default function CheckinPage() {
   }, [])
 
   // 可簽到 = 今日有例會 且 在簽到時段內（會議室開放～簽到截止）
-  const canSignin = meetingStatus !== '今日無例會' && !!today && isSigninWindowOpen(today)
+  // localhost 時可 bypass 時段限制，方便測試
+  const canSignin = meetingStatus !== '今日無例會' && !!today && (isDevBypass || isSigninWindowOpen(today))
   const formDisabled = !canSignin
 
   const getCheckinStatus = useCallback((memberId: number) => {
