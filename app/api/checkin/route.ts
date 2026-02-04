@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
 import { validateCheckin } from '@/lib/validation'
+import { CHECKIN_TIMES, SIGNIN_OPEN_MINS, SIGNIN_DEADLINE_MINS, LATE_THRESHOLD_MINS } from '@/lib/checkin-times'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
       return apiError('今天沒有會議，請先在後台建立會議後再簽到', 400)
     }
 
-    // 簽到 6:30～8:45，7:00 前為正常、7:00 後為遲到，8:45 後截止（7:00 後簽到不進獎品區，由抽獎 API 依 checkin_time 過濾）
+    // 簽到時段由 lib/checkin-times 統一設定
     // 開發環境可傳 _testBypassTime: true 繞過時間檢查（測試用）
     const skipTimeCheck = process.env.NODE_ENV === 'development' && _testBypassTime === true
     const inferCheckinStatus = (): { status: string; reject?: string } => {
@@ -64,9 +65,9 @@ export async function POST(request: Request) {
       const twDateStr = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' })
       const mins = twHour * 60 + twMin
       if (twDateStr !== date) return { status: 'present' }
-      if (mins > 8 * 60 + 45) return { status: 'absent', reject: '簽到已截止（8:45），本次記為缺席' }
-      if (mins < 6 * 60 + 30) return { status: 'absent', reject: '簽到尚未開放（6:30 起）' }
-      if (mins >= 7 * 60 + 0) return { status: 'late' }
+      if (mins > SIGNIN_DEADLINE_MINS) return { status: 'absent', reject: `簽到已截止（${CHECKIN_TIMES.signinDeadline}），本次記為缺席` }
+      if (mins < SIGNIN_OPEN_MINS) return { status: 'absent', reject: `簽到尚未開放（${CHECKIN_TIMES.signinStart} 起）` }
+      if (mins >= LATE_THRESHOLD_MINS) return { status: 'late' }
       return { status: 'present' }
     }
     const inferred = inferCheckinStatus()

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
-import { isLotteryClosed, isLotteryExpired } from '@/lib/lottery-deadline'
+import { isLotteryClosed } from '@/lib/lottery-deadline'
+import { CHECKIN_TIMES } from '@/lib/checkin-times'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,8 +28,9 @@ export async function POST(request: Request) {
       return apiError('抽獎已結束（例會日 6:30～7:00 可抽獎，7:00 截止）', 400)
     }
 
-    // 獎品區僅計 7:00 前簽到者（checkin_time < 例會日 07:00 台北）
-    const LOTTERY_CUTOFF = new Date(targetDate + 'T07:00:00+08:00').toISOString()
+    // 獎品區僅計 lotteryCutoff 前簽到者（由 lib/checkin-times 統一設定）
+    const [ch, cm] = CHECKIN_TIMES.lotteryCutoff.split(':').map(Number)
+    const LOTTERY_CUTOFF = new Date(targetDate + `T${String(ch).padStart(2, '0')}:${String(cm || 0).padStart(2, '0')}:00+08:00`).toISOString()
     const ATTENDANCE_STATUSES = ['present', 'early', 'late', 'early_leave', 'proxy']
 
     // 1. 獲取 7:00 前簽到的人數（獎品區名單）

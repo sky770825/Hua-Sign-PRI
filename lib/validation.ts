@@ -84,12 +84,18 @@ export function validateCheckin(data: {
 }
 
 /**
- * 驗證會議資料
+ * 驗證會議資料（目前僅允許週四）
  */
-export function validateMeeting(data: { date?: any; status?: any }): ValidationResult {
+export function validateMeeting(data: { date?: any; status?: any; allowNonThursday?: boolean }): ValidationResult {
   if (data.date !== undefined) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data.date))) {
       return { valid: false, error: '日期格式錯誤，應為 YYYY-MM-DD' }
+    }
+    if (!data.allowNonThursday) {
+      const d = new Date(String(data.date) + 'T12:00:00')
+      if (d.getDay() !== 4) {
+        return { valid: false, error: '目前僅支援週四例會' }
+      }
     }
   }
   

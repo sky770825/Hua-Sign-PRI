@@ -10,6 +10,7 @@ export const TABLES = {
   MEMBERS: 'estate_attendance_members',
   MEETINGS: 'estate_attendance_meetings',
   CHECKINS: 'estate_attendance_checkins',
+  PRIZES: 'estate_attendance_prizes',
   WINNERS: 'estate_attendance_lottery_winners',
 }
 

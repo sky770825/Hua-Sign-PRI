@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { debounce } from '@/lib/frontend-utils'
 import { ZOOM_MEETING_URL, ZOOM_MEETING_ID_DISPLAY } from '@/lib/meeting-config'
+import { getSigninTimeLabel, isSigninWindowOpen, CHECKIN_TIMES } from '@/lib/checkin-times'
 import type { Member, CheckinRecord } from '@/types'
 
 export default function CheckinPage() {
@@ -204,7 +205,8 @@ export default function CheckinPage() {
     }
     const tick = () => {
       const now = new Date()
-      const target = new Date(nextMeeting.date + 'T06:30:00+08:00')
+      const [h, m] = CHECKIN_TIMES.meetingRoomOpen.split(':').map(Number)
+      const target = new Date(nextMeeting.date + `T${String(h || 6).padStart(2, '0')}:${String(m || 30).padStart(2, '0')}:00+08:00`)
       if (now >= target) {
         setCountdown('例會已開始或已結束')
         return
@@ -241,6 +243,10 @@ export default function CheckinPage() {
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [])
+
+  // 可簽到 = 今日有例會 且 在簽到時段內（會議室開放～簽到截止）
+  const canSignin = meetingStatus !== '今日無例會' && !!today && isSigninWindowOpen(today)
+  const formDisabled = !canSignin
 
   const getCheckinStatus = useCallback((memberId: number) => {
     const checkin = checkins[memberId]
@@ -396,7 +402,7 @@ export default function CheckinPage() {
             </div>
           </div>
           <p className="text-gray-500 text-xs sm:text-sm mb-4 border-l-2 border-indigo-300 pl-3">
-            會議室 6:30 開放｜簽到 6:30～8:45｜7:00 前簽到才進獎品區
+            {getSigninTimeLabel()}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 sm:gap-6 items-center">
             <div className="sm:col-span-3 w-full">
@@ -406,7 +412,7 @@ export default function CheckinPage() {
               <select
                 value={selectedMember || ''}
                 onChange={(e) => setSelectedMember(e.target.value ? parseInt(e.target.value) : null)}
-                disabled={meetingStatus === '今日無例會'}
+                disabled={formDisabled}
                 className="w-full h-[42px] px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm bg-white shadow-sm hover:border-gray-400 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">請選擇您的名字</option>
@@ -429,9 +435,9 @@ export default function CheckinPage() {
                   }
                 }}
                 maxLength={500}
-                disabled={meetingStatus === '今日無例會'}
+                disabled={formDisabled}
                 className="w-full min-h-[42px] px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-y text-sm bg-white shadow-sm hover:border-gray-400 disabled:opacity-60 disabled:cursor-not-allowed"
-                placeholder={meetingStatus === '今日無例會' ? '例會當天開放' : '輸入您的留言...（最多500字）'}
+                placeholder={formDisabled ? (meetingStatus === '今日無例會' ? '例會當天開放' : '簽到已截止或尚未開放') : '輸入您的留言...（最多500字）'}
                 rows={1}
               />
               {message.length > 0 && (
@@ -447,14 +453,14 @@ export default function CheckinPage() {
                   setMessage('')
                   setSelectedMember(null)
                 }}
-                disabled={meetingStatus === '今日無例會'}
+                disabled={formDisabled}
                 className="px-4 py-2.5 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all border border-gray-300 shadow-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 取消
               </button>
               <button
                 onClick={submitCheckin}
-                disabled={meetingStatus !== '今日無例會' && (!selectedMember || submitting)}
+                disabled={!canSignin || !selectedMember || submitting}
                 className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
               >
                 {submitting ? (
@@ -462,8 +468,8 @@ export default function CheckinPage() {
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
                     <span>簽到中...</span>
                   </>
-                ) : meetingStatus === '今日無例會' ? (
-                  '例會當天開放'
+                ) : formDisabled ? (
+                  meetingStatus === '今日無例會' ? '例會當天開放' : '簽到已截止'
                 ) : (
                   '送出並簽到'
                 )}
