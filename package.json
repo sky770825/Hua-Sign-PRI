@@ -8,7 +8,7 @@
     "url": "https://github.com/sky770825/Hua-Sign-PRI.git"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9.0"
   },
   "scripts": {
     "dev": "next dev -p 3000 --webpack",
