@@ -6,6 +6,26 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+/** 查詢區間最多 1 年，避免超長查詢 */
+const MAX_RANGE_DAYS = 365
+
+function capDateRange(start: string | null, end: string | null): { start: string; end: string } {
+  const today = new Date().toISOString().split('T')[0]
+  const d = new Date()
+  d.setDate(d.getDate() - MAX_RANGE_DAYS)
+  const defaultStart = d.toISOString().split('T')[0]
+  let s = start && DATE_REGEX.test(start) ? start : defaultStart
+  let e = end && DATE_REGEX.test(end) ? end : today
+  const startDate = new Date(s)
+  const endDate = new Date(e)
+  const diffDays = Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000))
+  if (diffDays > MAX_RANGE_DAYS) {
+    const capped = new Date(endDate)
+    capped.setDate(capped.getDate() - MAX_RANGE_DAYS)
+    s = capped.toISOString().split('T')[0]
+  }
+  return { start: s, end: e }
+}
 
 /** 新成員編號門檻：此編號（含）以後視為新成員，總會議數僅計「有簽到的會議」 */
 const NEW_MEMBER_ID_CUTOFF = 76
@@ -88,7 +108,8 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url)
-    const { start, end } = parseDateRange(searchParams)
+    const { start: rawStart, end: rawEnd } = parseDateRange(searchParams)
+    const { start, end } = capDateRange(rawStart, rawEnd)
 
     const today = new Date().toISOString().split('T')[0]
 

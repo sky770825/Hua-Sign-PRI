@@ -2,19 +2,28 @@ import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, ensureSupabaseConfigured } from '@/lib/api-utils'
 import { handleDatabaseError } from '@/lib/api-utils'
+import { withCache, clearCache } from '@/lib/cache'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 export const fetchCache = 'force-no-store'
 
+const CONTEXT_CACHE_KEY = 'attendance:context'
+const CONTEXT_CACHE_TTL = 45 * 1000 // 45 秒短期快取
+
 /**
  * 出席管理頁面情境 API：一次回傳 members、meetings、checkinsByDate、meetingStats
  * 供前端只打 1 次請求即可渲染出席管理（當日簽到從 checkinsByDate[date] 取）
+ * Query: ?fresh=1 強制跳過快取
  */
-export async function GET() {
+export async function GET(request: Request) {
   const envErr = ensureSupabaseConfigured()
   if (envErr) return envErr
-  try {
+
+  const { searchParams } = new URL(request.url)
+  const forceFresh = searchParams.get('fresh') === '1'
+
+  const fetchContextData = async () => {
     const [membersRes, meetingsRes] = await Promise.all([
       supabaseService.from(TABLES.MEMBERS).select('id, name, profession').order('id', { ascending: true }),
       supabaseService.from(TABLES.MEETINGS).select('*').order('date', { ascending: false }),
@@ -41,8 +50,7 @@ export async function GET() {
         .range(offset, offset + PAGE_SIZE - 1)
 
       if (checkinsRes.error) {
-        console.error('Error fetching checkins:', checkinsRes.error)
-        return apiError(handleDatabaseError(checkinsRes.error) || '獲取簽到失敗', 500)
+        throw new Error(handleDatabaseError(checkinsRes.error) || '獲取簽到失敗')
       }
       const page = checkinsRes.data || []
       checkins = checkins.concat(page)
@@ -51,12 +59,10 @@ export async function GET() {
     }
 
     if (membersRes.error) {
-      console.error('Error fetching members:', membersRes.error)
-      return apiError('獲取會員失敗', 500)
+      throw new Error('獲取會員失敗')
     }
     if (meetingsRes.error) {
-      console.error('Error fetching meetings:', meetingsRes.error)
-      return apiError('獲取會議失敗', 500)
+      throw new Error('獲取會議失敗')
     }
 
     const members = membersRes.data || []
@@ -71,7 +77,6 @@ export async function GET() {
       profession: string
     }>> = {}
     const meetingStats: Record<string, number> = {}
-    // 每人每場只計一次（同一 member_id + meeting_date 取最新一筆，避免重複紀錄造成多算）
     const seenPerDate = new Map<string, Set<number>>()
 
     for (const c of checkins) {
@@ -105,12 +110,19 @@ export async function GET() {
       if (d && meetingStats[d] === undefined) meetingStats[d] = 0
     }
 
-    return apiSuccess({
-      members,
-      meetings,
-      checkinsByDate: byDate,
-      meetingStats
-    })
+    return { members, meetings, checkinsByDate: byDate, meetingStats }
+  }
+
+  try {
+    if (forceFresh) {
+      clearCache(CONTEXT_CACHE_KEY)
+    }
+    const data = await withCache(
+      CONTEXT_CACHE_KEY,
+      fetchContextData,
+      CONTEXT_CACHE_TTL
+    )
+    return apiSuccess(data)
   } catch (err) {
     console.error('Error in attendance context:', err)
     return apiError(err instanceof Error ? err.message : '取得情境失敗', 500)

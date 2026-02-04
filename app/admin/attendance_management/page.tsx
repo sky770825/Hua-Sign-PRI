@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { filterVercelText, safeApiCall } from '@/lib/frontend-utils'
@@ -2320,11 +2321,51 @@ export default function AttendanceManagement() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-600 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-600 text-lg">載入中...</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
+        {/* Header skeleton */}
+        <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-xl">
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="h-8 w-48 bg-white/20 rounded mb-2 animate-pulse" />
+                <div className="h-4 w-32 bg-white/20 rounded animate-pulse" />
+              </div>
+              <div className="h-10 w-20 bg-white/20 rounded-lg animate-pulse" />
+            </div>
+          </div>
+        </header>
+        {/* Tabs skeleton */}
+        <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 shadow-sm sticky top-0 z-10">
+          <div className="w-full px-4 sm:px-6 lg:px-8">
+            <div className="flex gap-4 py-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-6 w-24 bg-gray-200 rounded animate-pulse" />
+              ))}
+            </div>
+          </div>
         </div>
+        {/* Content skeleton */}
+        <main className="w-full min-w-0 px-4 sm:px-6 lg:px-8 py-8">
+          <div className="space-y-6 max-w-7xl mx-auto">
+            <div className="bg-white/90 rounded-2xl shadow-lg p-6 border border-gray-100">
+              <div className="h-5 w-32 bg-gray-200 rounded mb-4 animate-pulse" />
+              <div className="h-12 w-full max-w-xs bg-gray-100 rounded-xl mb-6 animate-pulse" />
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                  <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
+                ))}
+              </div>
+            </div>
+            <div className="bg-white/90 rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+              <div className="h-6 w-40 bg-gray-200 rounded mb-4 mx-6 mt-6 animate-pulse" />
+              <div className="space-y-3 p-6 pt-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                  <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+                ))}
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     )
   }
@@ -3567,9 +3608,12 @@ export default function AttendanceManagement() {
                 {prizes.map((prize) => (
                   <div key={prize.id} className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border-2 border-purple-200">
                     <div className="flex items-start gap-3">
-                      <img
+                      <Image
                         src={getPrizeImageUrl(prize)}
                         alt={prize.name}
+                        width={64}
+                        height={64}
+                        unoptimized
                         className="w-16 h-16 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                         onClick={() => {
                           setPreviewImageUrl(getPrizeImageUrl(prize))
@@ -3718,7 +3762,7 @@ export default function AttendanceManagement() {
                           <td className="px-4 py-2 text-sm text-gray-700">{w.meeting_date}</td>
                           <td className="px-4 py-2 text-sm font-medium text-gray-900">{w.member_name}</td>
                           <td className="px-4 py-2 text-sm text-gray-700 flex items-center gap-2">
-                            <img src={getPrizeImageUrl({ id: w.prize_id, image_url: w.prize_image_url })} alt="" className="w-8 h-8 object-cover rounded" />
+                            <Image src={getPrizeImageUrl({ id: w.prize_id, image_url: w.prize_image_url })} alt="" width={32} height={32} unoptimized className="w-8 h-8 object-cover rounded" />
                             {w.prize_name}
                           </td>
                         </tr>
@@ -4419,9 +4463,12 @@ export default function AttendanceManagement() {
                 {editingPrize && editingPrize.image_url && !newPrize.image && (
                   <div className="mt-2">
                     <p className="text-xs text-gray-500 mb-1">當前圖片：</p>
-                    <img
+                    <Image
                       src={editingPrize.image_url}
                       alt={editingPrize.name}
+                      width={80}
+                      height={80}
+                      unoptimized
                       className="w-20 h-20 object-cover rounded cursor-pointer hover:opacity-90 transition-opacity"
                       onClick={() => {
                         setPreviewImageUrl(editingPrize.image_url)

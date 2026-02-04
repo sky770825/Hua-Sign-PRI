@@ -120,15 +120,19 @@ export default function CheckinPage() {
   // 一律不快取，避免例會當天 6:30 後仍顯示舊的「今日無例會」或跨日未更新
   const noStore = { cache: 'no-store' as RequestCache }
 
-  // 加载数据的函数
+  // 加载数据的函数（會員與簽到並行請求，減少等待時間）
   const loadData = useCallback(async () => {
     setLoadError(null)
     try {
       const todayDate = new Date().toISOString().split('T')[0]
       setToday(todayDate)
 
-      // 获取会员列表（不快取，確保名單與後台一致）
-      const membersRes = await fetch('/api/members', noStore)
+      // 會員與簽到並行請求
+      const [membersRes, checkinsRes] = await Promise.all([
+        fetch('/api/members', noStore),
+        fetch(`/api/checkins?date=${todayDate}&_t=${Date.now()}`, noStore),
+      ])
+
       const membersData = await membersRes.json().catch(() => ({}))
       if (!membersRes.ok) {
         const errMsg = membersData?.error || '無法載入會員名單'
@@ -136,13 +140,11 @@ export default function CheckinPage() {
       }
       setMembers(membersData.members || [])
 
-      // 获取今天的签到记录（不快取 + 時間戳防快取，例會當天時間一到即可正確顯示可簽到）
-      const checkinsRes = await fetch(`/api/checkins?date=${todayDate}&_t=${Date.now()}`, noStore)
       if (!checkinsRes.ok) {
         throw new Error('Failed to fetch checkins')
       }
       const checkinsData = await checkinsRes.json()
-      
+
       const checkinMap: Record<number, CheckinRecord> = {}
       if (checkinsData.checkins) {
         checkinsData.checkins.forEach((checkin: CheckinRecord & { member_id: number }) => {
@@ -150,7 +152,7 @@ export default function CheckinPage() {
         })
       }
       setCheckins(checkinMap)
-      
+
       // 檢查會議狀態
       if (checkinsData.meeting) {
         setMeetingStatus(`今日會議：${checkinsData.meeting.date}`)

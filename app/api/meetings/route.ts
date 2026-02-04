@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
 import { validateMeeting } from '@/lib/validation'
-import { withCache, CacheKeys, CacheConfig, clearCacheByPrefix } from '@/lib/cache'
+import { withCache, CacheKeys, CacheConfig, clearCacheByPrefix, clearCache } from '@/lib/cache'
+
+const CONTEXT_CACHE_KEY = 'attendance:context'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -68,9 +70,9 @@ export async function POST(request: Request) {
       console.log('會議已創建:', data)
     }
 
-    // 清除會議相關快取
     clearCacheByPrefix('meetings:')
-    
+    clearCache(CONTEXT_CACHE_KEY)
+
     return apiSuccess()
   } catch (error) {
     console.error('Error creating/updating meeting:', error)

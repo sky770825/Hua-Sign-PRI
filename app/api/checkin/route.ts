@@ -3,6 +3,9 @@ import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
 import { validateCheckin } from '@/lib/validation'
 import { CHECKIN_TIMES, SIGNIN_OPEN_MINS, SIGNIN_DEADLINE_MINS, LATE_THRESHOLD_MINS } from '@/lib/checkin-times'
+import { clearCache } from '@/lib/cache'
+
+const CONTEXT_CACHE_KEY = 'attendance:context'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -181,6 +184,7 @@ export async function POST(request: Request) {
       console.log('簽到記錄已創建:', { memberId, date, status: checkinStatus })
     }
 
+    clearCache(CONTEXT_CACHE_KEY)
     return apiSuccess()
   } catch (error) {
     console.error('Error checking in (catch block):', {

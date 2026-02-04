@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { formatId, formatIdWithHash } from '@/lib/format-utils'
 import { getPrizeImageUrl } from '@/lib/prize-placeholder'
@@ -834,9 +835,12 @@ export default function LotteryPage() {
                           </p>
                           {/* 照片置中、為主視覺 */}
                           <div className="flex-1 flex items-center justify-center min-h-0 pointer-events-auto">
-                            <img
+                            <Image
                               src={getPrizeImageUrl(selectedPrize)}
                               alt={selectedPrize.name}
+                              width={96}
+                              height={96}
+                              unoptimized
                               className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-full border-4 border-purple-300 shadow-lg cursor-pointer hover:opacity-90 transition-opacity"
                               onClick={() => {
                                 setPreviewImageUrl(getPrizeImageUrl(selectedPrize))
@@ -1015,9 +1019,12 @@ export default function LotteryPage() {
                       </button>
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <img
+                          <Image
                             src={getPrizeImageUrl(prize)}
                             alt={prize.name}
+                            width={56}
+                            height={56}
+                            unoptimized
                             className="w-14 h-14 object-cover rounded-xl border-2 border-gray-200 shadow-md cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
                               setPreviewImageUrl(getPrizeImageUrl(prize))
@@ -1081,9 +1088,12 @@ export default function LotteryPage() {
                         } ${deletingWinnerId === record.id ? 'opacity-50' : ''}`}
                       >
                         <div className="flex items-center gap-3">
-                          <img
+                          <Image
                             src={getPrizeImageUrl({ id: record.prize_id, image_url: record.prize_image_url })}
                             alt={record.prize_name}
+                            width={56}
+                            height={56}
+                            unoptimized
                             className="w-14 h-14 object-cover rounded-xl border-2 border-yellow-100 shadow-md cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
                               setPreviewImageUrl(getPrizeImageUrl({ id: record.prize_id, image_url: record.prize_image_url }))
@@ -1212,9 +1222,12 @@ export default function LotteryPage() {
                     <div className="border-t border-gray-200 pt-4">
                     <p className="text-lg text-gray-600 mb-2">獎品</p>
                     <div className="flex items-center justify-center gap-4">
-                      <img
+                      <Image
                         src={getPrizeImageUrl(winnerModalData.prize)}
                         alt={winnerModalData.prize.name}
+                        width={128}
+                        height={128}
+                        unoptimized
                         title="點擊放大"
                         className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-xl shadow-md border-2 border-yellow-300 cursor-pointer hover:opacity-90 hover:ring-2 hover:ring-purple-400 transition-all"
                         onClick={(e) => {

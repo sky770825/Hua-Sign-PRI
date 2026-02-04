@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
 import { validateMeeting } from '@/lib/validation'
-import { clearCacheByPrefix, CacheKeys } from '@/lib/cache'
+import { clearCacheByPrefix, CacheKeys, clearCache } from '@/lib/cache'
+
+const CONTEXT_CACHE_KEY = 'attendance:context'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,9 +62,9 @@ export async function PUT(
 
     console.log('會議更新成功:', data)
     
-    // 清除會議相關快取
     clearCacheByPrefix('meetings:')
-    
+    clearCache(CONTEXT_CACHE_KEY)
+
     return apiSuccess(data)
   } catch (error) {
     console.error('Error updating meeting:', error)
@@ -130,11 +132,10 @@ export async function DELETE(
 
     console.log('會議刪除成功:', data)
     
-    // 清除會議相關快取
     clearCacheByPrefix('meetings:')
-    // 同時清除相關的簽到快取
     clearCacheByPrefix('checkins:')
-    
+    clearCache(CONTEXT_CACHE_KEY)
+
     return apiSuccess(data)
   } catch (error) {
     console.error('Error deleting meeting:', error)

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
 import { validateCheckin } from '@/lib/validation'
+import { clearCache } from '@/lib/cache'
+
+const CONTEXT_CACHE_KEY = 'attendance:context'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,7 +52,11 @@ export async function POST(request: Request) {
 
     const deletedCount = data?.length || 0
     console.log('簽到記錄刪除結果:', { deletedCount, memberId, date, data })
-    
+
+    if (deletedCount > 0) {
+      clearCache(CONTEXT_CACHE_KEY)
+    }
+
     // 如果沒有刪除任何記錄，可能是記錄不存在
     if (deletedCount === 0) {
       // 檢查記錄是否存在

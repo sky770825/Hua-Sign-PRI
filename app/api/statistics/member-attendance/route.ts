@@ -7,14 +7,30 @@ export const revalidate = 0
 export const fetchCache = 'force-no-store'
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+/** 查詢區間最多 1 年，避免超長查詢 */
+const MAX_RANGE_DAYS = 365
 
-function parseDateRange(searchParams: URLSearchParams): { start: string | null; end: string | null } {
-  const start = searchParams.get('start')?.trim() || null
-  const end = searchParams.get('end')?.trim() || null
-  return {
-    start: start && DATE_REGEX.test(start) ? start : null,
-    end: end && DATE_REGEX.test(end) ? end : null
+function parseDateRange(searchParams: URLSearchParams): { start: string; end: string } {
+  const today = new Date().toISOString().split('T')[0]
+  const d = new Date()
+  d.setDate(d.getDate() - MAX_RANGE_DAYS)
+  const defaultStart = d.toISOString().split('T')[0]
+
+  let start = searchParams.get('start')?.trim() || null
+  let end = searchParams.get('end')?.trim() || null
+  start = start && DATE_REGEX.test(start) ? start : defaultStart
+  end = end && DATE_REGEX.test(end) ? end : today
+
+  // 區間超過 1 年時，取 end 往前 1 年
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  const diffDays = Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000))
+  if (diffDays > MAX_RANGE_DAYS) {
+    const capped = new Date(endDate)
+    capped.setDate(capped.getDate() - MAX_RANGE_DAYS)
+    start = capped.toISOString().split('T')[0]
   }
+  return { start, end }
 }
 
 /** 新成員編號門檻：此編號（含）以後視為新成員，其總會議數僅計「有簽到的會議」 */
