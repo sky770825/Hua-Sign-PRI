@@ -15,13 +15,14 @@ export async function POST(request: Request) {
       message?: string
       status?: string
       checkin_time?: string
+      _testBypassTime?: boolean
     }>(request)
     
     if (parseError || !body) {
       return apiError('請求格式錯誤：無法解析 JSON', 400)
     }
 
-    const { memberId, date, message, status, checkin_time } = body
+    const { memberId, date, message, status, checkin_time, _testBypassTime } = body
 
     // 輸入驗證
     if (!memberId || !date) {
@@ -51,7 +52,26 @@ export async function POST(request: Request) {
       return apiError('今天沒有會議，請先在後台建立會議後再簽到', 400)
     }
 
-    const checkinStatus = status || 'present'
+    // 簽到 6:30～8:45，7:00 前為正常、7:00 後為遲到，8:45 後截止（7:00 後簽到不進獎品區，由抽獎 API 依 checkin_time 過濾）
+    // 開發環境可傳 _testBypassTime: true 繞過時間檢查（測試用）
+    const skipTimeCheck = process.env.NODE_ENV === 'development' && _testBypassTime === true
+    const inferCheckinStatus = (): { status: string; reject?: string } => {
+      if (skipTimeCheck) return { status: 'present' }
+      if (status && !['present'].includes(status)) return { status }
+      const now = new Date()
+      const twHour = parseInt(now.toLocaleString('en-CA', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }), 10)
+      const twMin = parseInt(now.toLocaleString('en-CA', { timeZone: 'Asia/Taipei', minute: '2-digit' }), 10)
+      const twDateStr = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' })
+      const mins = twHour * 60 + twMin
+      if (twDateStr !== date) return { status: 'present' }
+      if (mins > 8 * 60 + 45) return { status: 'absent', reject: '簽到已截止（8:45），本次記為缺席' }
+      if (mins < 6 * 60 + 30) return { status: 'absent', reject: '簽到尚未開放（6:30 起）' }
+      if (mins >= 7 * 60 + 0) return { status: 'late' }
+      return { status: 'present' }
+    }
+    const inferred = inferCheckinStatus()
+    if (inferred.reject) return apiError(inferred.reject, 400)
+    const checkinStatus = status || inferred.status
 
     // 驗證會員是否存在（先檢查會員，避免不必要的查詢）
     const { data: member, error: memberFetchError } = await supabaseService
@@ -87,10 +107,13 @@ export async function POST(request: Request) {
       // 更新簽到記錄
       console.log('更新現有簽到記錄:', { memberId, date, status: checkinStatus, checkin_time })
       
-      // 如果提供了自定義時間，使用它；否則使用當前時間
-      const checkinTime = checkin_time 
+      // 如果提供了自定義時間，使用它；否則使用當前時間（測試 bypass 時使用 06:45 以進入獎品區）
+      let checkinTime = checkin_time
         ? new Date(checkin_time).toISOString()
         : new Date().toISOString()
+      if (skipTimeCheck && !checkin_time) {
+        checkinTime = new Date(`${date}T06:45:00+08:00`).toISOString()
+      }
       
       const { error: updateError } = await supabaseService
         .from(TABLES.CHECKINS)
@@ -119,10 +142,13 @@ export async function POST(request: Request) {
       // 創建新簽到記錄
       console.log('創建新簽到記錄:', { memberId, date, status: checkinStatus, checkin_time })
       
-      // 如果提供了自定義時間，使用它；否則使用當前時間
-      const checkinTime = checkin_time 
+      // 如果提供了自定義時間，使用它；否則使用當前時間（測試 bypass 時使用 06:45 以進入獎品區）
+      let checkinTime = checkin_time
         ? new Date(checkin_time).toISOString()
         : new Date().toISOString()
+      if (skipTimeCheck && !checkin_time) {
+        checkinTime = new Date(`${date}T06:45:00+08:00`).toISOString()
+      }
       
       const { error: insertError } = await supabaseService
         .from(TABLES.CHECKINS)

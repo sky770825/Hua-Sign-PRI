@@ -38,12 +38,7 @@ const nextConfig = {
       },
     ],
   },
-  // 輸出配置
-  // standalone 模式適用於 Docker/自託管
-  // 對於 Cloudflare Pages，可能需要移除或使用 'export'
-  // output: 'standalone', // 暫時註解，Cloudflare Pages 可能需要不同的配置
-  
-  // Cloudflare Pages 優化：禁用緩存以減少構建輸出大小
+  // 輸出配置（Vercel 部署）
   // 緩存文件可能超過 25 MiB 限制
   onDemandEntries: {
     maxInactiveAge: 25 * 1000,

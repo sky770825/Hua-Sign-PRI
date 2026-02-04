@@ -27,6 +27,7 @@ export default function AttendanceManagement() {
   const selectedDateRef = useRef(selectedDate)
   selectedDateRef.current = selectedDate
   const checkinsByDateRef = useRef<Record<string, CheckinRecord[]>>({})
+  const [datesWithCheckins, setDatesWithCheckins] = useState<string[]>([])
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
   const [loading, setLoading] = useState(true)
   
@@ -130,7 +131,7 @@ export default function AttendanceManagement() {
   const [careListFilter, setCareListFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all')
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' })
-  const [systemSettings, setSystemSettings] = useState({ autoBackup: false, emailNotifications: false, defaultMeetingTime: '19:00', checkinDeadline: '19:30' })
+  const [systemSettings, setSystemSettings] = useState({ autoBackup: false, emailNotifications: false, defaultMeetingTime: '06:30', lateThreshold: '07:00', checkinDeadline: '08:45' })
   useEffect(() => {
     try {
       const saved = localStorage.getItem('systemSettings')
@@ -139,8 +140,9 @@ export default function AttendanceManagement() {
         setSystemSettings({
           autoBackup: !!parsed.autoBackup,
           emailNotifications: !!parsed.emailNotifications,
-          defaultMeetingTime: parsed.defaultMeetingTime || '19:00',
-          checkinDeadline: parsed.checkinDeadline || '19:30',
+          defaultMeetingTime: parsed.defaultMeetingTime || '06:30',
+          lateThreshold: parsed.lateThreshold || '07:00',
+          checkinDeadline: parsed.checkinDeadline || '08:45',
         })
       }
     } catch (e) {
@@ -227,6 +229,7 @@ export default function AttendanceManagement() {
         setCheckins([])
         setSelectedMeeting(null)
         setMeetingStats({})
+        setDatesWithCheckins([])
         return
       }
       const contextJson = await contextRes.json()
@@ -236,6 +239,7 @@ export default function AttendanceManagement() {
       const checkinsByDate: Record<string, CheckinRecord[]> = data.checkinsByDate || {}
       const meetingStatsMap: Record<string, number> = data.meetingStats || {}
       checkinsByDateRef.current = checkinsByDate
+      setDatesWithCheckins(Object.keys(checkinsByDate))
 
       setMembers(membersList)
       setMeetings(meetingsList)
@@ -270,7 +274,17 @@ export default function AttendanceManagement() {
     }
   }, [fetchWithTimeout, selectedDate])
 
-  // 切換日期時從已載入的 checkinsByDate 更新當日簽到與會議，不必重打 API
+  // 當會議列表變更時，若當前選中日期不在會議也不在有簽到的日期中，則自動切換到最新日期
+  useEffect(() => {
+    const inMeetings = meetings.some((m) => m.date === selectedDate)
+    const inOrphan = datesWithCheckins.includes(selectedDate)
+    if (inMeetings || inOrphan) return
+    const meetingDates = meetings.map((m) => m.date).filter(Boolean)
+    const fallback = [...meetingDates, ...datesWithCheckins].sort((a, b) => b.localeCompare(a))[0]
+    if (fallback) setSelectedDate(fallback)
+  }, [meetings, datesWithCheckins, selectedDate])
+
+  // 切換日期時從已載入的 checkinsByDate 更新當日簽到與會議
   useEffect(() => {
     const byDate = checkinsByDateRef.current
     if (Object.keys(byDate).length === 0) return
@@ -588,20 +602,27 @@ export default function AttendanceManagement() {
 
   const thursdayDates = useMemo(() => getThursdayDates(), [])
 
-  // 合併資料庫中的會議日期，確保有簽到資料的日期一定會出現在選單中
+  // 有簽到但尚未建立會議的日期（孤兒日期）
+  const orphanDates = useMemo(() => {
+    const meetingSet = new Set(meetings.filter((m) => m.date).map((m) => m.date))
+    return datesWithCheckins.filter((d) => d && !meetingSet.has(d)).sort((a, b) => b.localeCompare(a))
+  }, [meetings, datesWithCheckins])
+
+  // 會議日期 + 有簽到但無會議的日期，全部可選；與會議管理同步
   const selectableDates = useMemo(() => {
-    const dateMap = new Map(thursdayDates.map(d => [d.value, d]))
-    for (const m of meetings) {
-      if (m.date && !dateMap.has(m.date)) {
-        const d = new Date(m.date + 'T12:00:00')
-        dateMap.set(m.date, {
-          value: m.date,
-          label: d.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
-        })
-      }
-    }
-    return Array.from(dateMap.values()).sort((a, b) => a.value.localeCompare(b.value))
-  }, [thursdayDates, meetings])
+    const meetingSet = new Set(meetings.filter((m) => m.date).map((m) => m.date))
+    const allDates = new Set([...Array.from(meetingSet), ...orphanDates])
+    return Array.from(allDates)
+      .map((dateStr) => {
+        const d = new Date(dateStr + 'T12:00:00')
+        const isOrphan = orphanDates.includes(dateStr)
+        return {
+          value: dateStr,
+          label: d.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }) + (isOrphan ? '（有簽到，待新增會議）' : ''),
+        }
+      })
+      .sort((a, b) => b.value.localeCompare(a.value))
+  }, [meetings, orphanDates])
 
   // 統計報表：排序後的會員統計列（useMemo 避免每次 render 重算 map+sort）
   type StatsRow = { member: Member; stat: { total: number; present: number; late: number; proxy: number; absent: number; rate: number } }
@@ -662,27 +683,41 @@ export default function AttendanceManagement() {
   }, [meetings, meetingStats, meetingSortMode])
 
   const handleCreateMeeting = async () => {
-    // 自动设置为下一个周四
     const thursdayDate = getNextThursday()
     setSelectedDate(thursdayDate)
-    
     try {
       const response = await fetch('/api/meetings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          date: thursdayDate,
-          status: 'scheduled',
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: thursdayDate, status: 'scheduled' }),
       })
-
-      if (response.ok) {
-        loadData(false, thursdayDate)
-      }
+      if (response.ok) loadData(false, thursdayDate)
     } catch (error) {
       console.error('Error creating meeting:', error)
+    }
+  }
+
+  /** 為「有簽到但無會議」的日期新增會議（可處理非週四的孤兒日期） */
+  const handleCreateMeetingForDate = async (dateStr: string) => {
+    try {
+      const response = await fetch('/api/meetings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: dateStr, status: 'scheduled' }),
+      })
+      if (response.ok) {
+        loadData(false, dateStr)
+        setToast({ message: `已為 ${dateStr} 新增會議`, type: 'success' })
+        setTimeout(() => setToast(null), 3000)
+      } else {
+        const data = await response.json().catch(() => ({}))
+        setToast({ message: data.error || '新增失敗', type: 'error' })
+        setTimeout(() => setToast(null), 4000)
+      }
+    } catch (error) {
+      console.error('Error creating meeting for date:', error)
+      setToast({ message: '新增失敗', type: 'error' })
+      setTimeout(() => setToast(null), 4000)
     }
   }
 
@@ -927,7 +962,7 @@ export default function AttendanceManagement() {
 
   const getAbsentDraft = useCallback((memberId: number) => {
     return absentDrafts[memberId] || {
-      checkin_time: `${selectedDate}T19:00:00`,
+      checkin_time: `${selectedDate}T08:45:00`,
       status: 'absent',
       message: ''
     }
@@ -935,7 +970,7 @@ export default function AttendanceManagement() {
 
   const setAbsentDraft = useCallback((memberId: number, updates: Partial<{ checkin_time: string; status: string; message: string }>) => {
     const defaults = {
-      checkin_time: `${selectedDate}T19:00:00`,
+      checkin_time: `${selectedDate}T08:45:00`,
       status: 'absent',
       message: ''
     }
@@ -2455,35 +2490,57 @@ export default function AttendanceManagement() {
               <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-4 mb-6">
                 <div className="flex-1 min-w-[200px]">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    📅 選擇日期（週四）
+                    📅 選擇會議日期
                   </label>
-                  <select
-                    value={selectedDate}
-                    onChange={(e) => {
-                      const newDate = e.target.value
-                      setSelectedDate(newDate)
-                      // 使用新的日期加载数据
-                      setTimeout(() => {
-                        loadData(false, newDate)
-                      }, 0)
-                    }}
-                    className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white"
-                  >
-                    {selectableDates.map((date) => (
-                      <option key={date.value} value={date.value}>
-                        {date.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">提示：可選週四或有會議資料的日期</p>
+                  {selectableDates.length > 0 ? (
+                    <>
+                      <select
+                        value={selectedDate}
+                        onChange={(e) => {
+                          const newDate = e.target.value
+                          setSelectedDate(newDate)
+                          setTimeout(() => loadData(false, newDate), 0)
+                        }}
+                        className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white"
+                      >
+                        {selectableDates.map((date) => (
+                          <option key={date.value} value={date.value}>
+                            {date.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">與會議管理同步，新增／刪除請至「會議管理」</p>
+                    </>
+                  ) : (
+                    <div className="px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50">
+                      <p className="text-sm text-gray-600 mb-2">尚無會議，請先在會議管理新增</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('meetings')
+                          if (typeof window !== 'undefined') {
+                            window.history.pushState({}, '', '/admin/attendance_management?tab=meetings')
+                          }
+                        }}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+                      >
+                        📅 前往會議管理
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {!selectedMeeting && (
+                {selectableDates.length > 0 && (
                   <div className="flex items-end">
                     <button
-                      onClick={handleCreateMeeting}
-                      className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md hover:shadow-lg font-semibold"
+                      onClick={() => {
+                        setActiveTab('meetings')
+                        if (typeof window !== 'undefined') {
+                          window.history.pushState({}, '', '/admin/attendance_management?tab=meetings')
+                        }
+                      }}
+                      className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-all shadow-sm font-semibold text-sm"
                     >
-                      ➕ 建立會議
+                      📅 管理會議
                     </button>
                   </div>
                 )}
@@ -2698,7 +2755,7 @@ export default function AttendanceManagement() {
                                     checkin_time: val ? new Date(val).toISOString() : new Date().toISOString()
                                   })
                                 } else {
-                                  setAbsentDraft(member.id, { checkin_time: val ? val : `${selectedDate}T19:00` })
+                                  setAbsentDraft(member.id, { checkin_time: val ? val : `${selectedDate}T08:45` })
                                 }
                               }}
                               className="px-2 py-1 border border-gray-300 rounded text-xs w-full max-w-[180px]"
@@ -2893,6 +2950,38 @@ export default function AttendanceManagement() {
                 </button>
               </div>
             </div>
+
+            {/* 有簽到但尚未建立會議的日期（孤兒日期） */}
+            {orphanDates.length > 0 && (
+              <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200">
+                <h3 className="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
+                  <span>⚠️</span>
+                  有簽到紀錄但尚未建立會議的日期
+                </h3>
+                <p className="text-xs text-amber-700 mb-3">這些日期在出席管理中可選，但尚未在會議表中建立，請點「新增會議」補齊。</p>
+                <div className="flex flex-wrap gap-2">
+                  {orphanDates.map((dateStr) => {
+                    const d = new Date(dateStr + 'T12:00:00')
+                    const label = d.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+                    const checkinCount = meetingStats[dateStr] ?? (checkinsByDateRef.current[dateStr]?.length ?? 0)
+                    return (
+                      <div key={dateStr} className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-amber-200">
+                        <span className="text-sm font-medium text-gray-800">{label}</span>
+                        <span className="text-xs text-gray-500">({checkinCount} 人簽到)</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateMeetingForDate(dateStr)}
+                          className="px-2 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700"
+                        >
+                          新增會議
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gradient-to-r from-indigo-50 to-purple-50">
@@ -3695,15 +3784,26 @@ export default function AttendanceManagement() {
                     <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                   </label>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">預設會議時間</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">會議室開放時間</label>
                     <input
                       type="time"
                       value={systemSettings.defaultMeetingTime}
                       onChange={(e) => setSystemSettings({ ...systemSettings, defaultMeetingTime: e.target.value })}
                       className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     />
+                    <p className="text-xs text-gray-500 mt-1">簽到開始（例：6:30）</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">遲到門檻</label>
+                    <input
+                      type="time"
+                      value={systemSettings.lateThreshold}
+                      onChange={(e) => setSystemSettings({ ...systemSettings, lateThreshold: e.target.value })}
+                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">超過此時間算遲到（例：7:00）</p>
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">簽到截止時間</label>
@@ -3713,6 +3813,7 @@ export default function AttendanceManagement() {
                       onChange={(e) => setSystemSettings({ ...systemSettings, checkinDeadline: e.target.value })}
                       className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                     />
+                    <p className="text-xs text-gray-500 mt-1">簽到截止（例：8:45）</p>
                   </div>
                 </div>
                 <button

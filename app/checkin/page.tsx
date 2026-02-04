@@ -57,8 +57,8 @@ export default function CheckinPage() {
 
       const data = await response.json()
       if (data.success) {
-        // 重新加载数据以确保数据一致性
-        const checkinsRes = await fetch(`/api/checkins?date=${today}`)
+        // 重新載入數據以確保與後台同步（不緩存）
+        const checkinsRes = await fetch(`/api/checkins?date=${today}&_t=${Date.now()}`, { cache: 'no-store' })
         if (checkinsRes.ok) {
           const checkinsData = await checkinsRes.json()
           const checkinMap: Record<number, CheckinRecord> = {}
@@ -398,8 +398,8 @@ export default function CheckinPage() {
           <p className="text-gray-500 text-xs sm:text-sm mb-4 border-l-2 border-indigo-300 pl-3">
             會議室 6:30 開放｜簽到 6:30～8:45｜7:00 前簽到才進獎品區
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-            <div className="sm:col-span-4">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 sm:gap-6 items-center">
+            <div className="sm:col-span-3 w-full">
               <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
                 選擇您的名字
               </label>
@@ -407,7 +407,7 @@ export default function CheckinPage() {
                 value={selectedMember || ''}
                 onChange={(e) => setSelectedMember(e.target.value ? parseInt(e.target.value) : null)}
                 disabled={meetingStatus === '今日無例會'}
-                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm bg-white shadow-sm hover:border-gray-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full h-[42px] px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm bg-white shadow-sm hover:border-gray-400 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">請選擇您的名字</option>
                 {filteredMembers.map((member) => (
@@ -417,7 +417,7 @@ export default function CheckinPage() {
                 ))}
               </select>
             </div>
-            <div className="sm:col-span-6">
+            <div className="sm:col-span-7 w-full">
               <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
                 留言（選填）
               </label>
@@ -430,7 +430,7 @@ export default function CheckinPage() {
                 }}
                 maxLength={500}
                 disabled={meetingStatus === '今日無例會'}
-                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none text-sm min-h-[42px] bg-white shadow-sm hover:border-gray-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full min-h-[42px] px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-y text-sm bg-white shadow-sm hover:border-gray-400 disabled:opacity-60 disabled:cursor-not-allowed"
                 placeholder={meetingStatus === '今日無例會' ? '例會當天開放' : '輸入您的留言...（最多500字）'}
                 rows={1}
               />
@@ -440,7 +440,7 @@ export default function CheckinPage() {
                 </div>
               )}
             </div>
-            <div className="sm:col-span-2 flex gap-2">
+            <div className="sm:col-span-2 flex flex-row sm:flex-col gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -454,7 +454,7 @@ export default function CheckinPage() {
               </button>
               <button
                 onClick={submitCheckin}
-                disabled={meetingStatus === '今日無例會' || !selectedMember || submitting}
+                disabled={meetingStatus !== '今日無例會' && (!selectedMember || submitting)}
                 className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
               >
                 {submitting ? (

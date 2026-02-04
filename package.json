@@ -18,7 +18,7 @@
     "build": "next build && rm -rf .next/cache",
     "build:cloudflare": "next build && rm -rf .next/cache .next/cache/webpack",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 999",
     "setup:vercel": "bash scripts/setup-vercel-env.sh",
     "deploy:vercel": "bash scripts/deploy-vercel.sh",
     "deploy:cloudflare": "bash scripts/deploy-cloudflare.sh",
