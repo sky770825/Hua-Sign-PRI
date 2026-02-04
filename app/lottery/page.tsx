@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { formatId, formatIdWithHash } from '@/lib/format-utils'
 import { getPrizeImageUrl } from '@/lib/prize-placeholder'
+import { isLotteryClosed, isLotteryExpired, getLotteryDeadlineLabel } from '@/lib/lottery-deadline'
 import type { Prize, CheckinMember, Winner, WinnerRecord } from '@/types'
 
 export default function LotteryPage() {
@@ -30,9 +31,13 @@ export default function LotteryPage() {
   const [deletingWinnerId, setDeletingWinnerId] = useState<number | null>(null) // 正在刪除的中獎記錄 ID
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null) // 待確認刪除的中獎記錄 ID
   const [showImagePreview, setShowImagePreview] = useState(false)
+  const [selectedPrizeIds, setSelectedPrizeIds] = useState<Set<number>>(new Set()) // 勾選的獎品 ID：有勾選則只從這些品項抽，無勾選則隨機
   const [previewImageUrl, setPreviewImageUrl] = useState('')
   const [previewImageAlt, setPreviewImageAlt] = useState('')
   const [imagePreviewScale, setImagePreviewScale] = useState(1)
+  const [lotteryExpired, setLotteryExpired] = useState(false)
+  const [lotteryClosed, setLotteryClosed] = useState(false)
+  const [lotteryDeadlineLabel, setLotteryDeadlineLabel] = useState('')
   const loadIdRef = useRef(0)
 
   const loadData = useCallback(async (showLoading = true) => {
@@ -94,6 +99,11 @@ export default function LotteryPage() {
       const targetDate = todayMeeting?.date || latestMeeting?.date || todayDate
       if (currentLoadId !== loadIdRef.current) return
       setCurrentMeetingDate(targetDate)
+      const expired = isLotteryExpired(targetDate)
+      const closed = isLotteryClosed(targetDate)
+      setLotteryExpired(expired)
+      setLotteryClosed(closed)
+      setLotteryDeadlineLabel(getLotteryDeadlineLabel(targetDate))
       
       console.log('📅 日期選擇:', {
         todayDate,
@@ -165,11 +175,18 @@ export default function LotteryPage() {
         (memberData.members || []).map((m: MemberInfo) => [m.id, m])
       )
       
+      // 獎品區僅計 7:00 前簽到者
+      const LOTTERY_CUTOFF = new Date(targetDate + 'T07:00:00+08:00').getTime()
       const members: CheckinMember[] = []
+      const seen = new Set<number>()
       const ATTENDANCE_STATUSES = ['present', 'early', 'late', 'early_leave', 'proxy']
       if (checkinsData.checkins) {
-        checkinsData.checkins.forEach((checkin: { member_id: number; status?: string }) => {
+        checkinsData.checkins.forEach((checkin: { member_id: number; status?: string; checkin_time?: string }) => {
           if (!checkin.status || !ATTENDANCE_STATUSES.includes(checkin.status)) return
+          const ct = checkin.checkin_time
+          if (ct && new Date(ct).getTime() >= LOTTERY_CUTOFF) return
+          if (seen.has(checkin.member_id)) return
+          seen.add(checkin.member_id)
           const member = memberMap.get(checkin.member_id)
           if (member) {
             members.push({
@@ -179,8 +196,11 @@ export default function LotteryPage() {
           }
         })
       }
-      setCheckinMembers(members)
-      setCheckinCount(members.length)
+      // 隔週四 6:30 起名單歸零；非 6:30～7:00 時僅禁用抽獎按鈕，仍顯示簽到數
+      const effectiveMembers = expired ? [] : members
+      const effectiveCount = effectiveMembers.length
+      setCheckinMembers(effectiveMembers)
+      setCheckinCount(effectiveCount)
       
       // 格式化中獎記錄，添加編號和排序
       // 確保 winnersData.winners 存在且為數組
@@ -226,7 +246,7 @@ export default function LotteryPage() {
       })
       
       setWinners(finalWinnerList)
-      setEligibleCount(Math.max(0, members.length - finalWinnerList.length))
+      setEligibleCount(expired ? 0 : (closed ? 0 : Math.max(0, effectiveCount - finalWinnerList.length)))
       
       console.log('✅ 數據載入完成:', {
         prizes: prizesData.prizes?.length || 0,
@@ -266,6 +286,10 @@ export default function LotteryPage() {
 
   const handleDraw = async () => {
     if (isSpinning) return
+    if (lotteryClosed) {
+      alert('抽獎已結束（例會日 6:30～7:00 可抽獎，7:00 截止）')
+      return
+    }
     if (checkinCount === 0) {
       alert('今天沒有簽到的會員，無法抽獎')
       return
@@ -304,12 +328,19 @@ export default function LotteryPage() {
         console.warn('抽獎前刷新獎品失敗，使用現有列表:', e)
       }
 
+      const body: { date: string; prizeIds?: number[] } = { date: currentMeetingDate || today }
+      if (selectedPrizeIds.size > 0) {
+        const ids = Array.from(selectedPrizeIds)
+        const validIds = ids.filter(id => prizesForDraw.some(p => p.id === id && p.remaining_quantity > 0))
+        if (validIds.length > 0) body.prizeIds = validIds
+      }
+
       const response = await fetch('/api/lottery/draw', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ date: currentMeetingDate || today }),
+        body: JSON.stringify(body),
       })
 
       // 檢查響應狀態
@@ -326,15 +357,20 @@ export default function LotteryPage() {
         throw new Error('抽獎響應數據不完整')
       }
 
-      // 計算目標獎品在轉盤上的角度（使用抽獎前刷新的獎品列表）
-      const selectedIndex = prizesForDraw.findIndex(p => p.id === data.prize.id)
+      // 計算目標參與人在轉盤上的角度（轉盤以參與人為區塊）
+      const winnerIds = new Set(winners.map((w: WinnerRecord) => w.member_id))
+      const eligibleForDraw = checkinMembers
+        .filter(m => !winnerIds.has(m.member_id))
+        .sort((a, b) => a.member_id - b.member_id)
+      const winnerMemberId = data.winner.member_id ?? data.winner.id
+      const selectedIndex = eligibleForDraw.findIndex(p => p.member_id === winnerMemberId)
       if (selectedIndex < 0) {
-        console.error('❌ 抽中獎品不在轉盤列表中', { drawnPrizeId: data.prize.id, drawnPrizeName: data.prize.name, prizeIds: prizesForDraw.map(p => p.id) })
+        console.error('❌ 中獎者不在可抽獎參與人列表中', { winnerMemberId, memberName: data.winner.name })
       }
-      const prizeCount = Math.max(prizesForDraw.length, 1)
-      const anglePerPrize = 360 / prizeCount
-      const targetAngle = selectedIndex >= 0 
-        ? (selectedIndex * anglePerPrize + anglePerPrize / 2)
+      const participantCount = Math.max(eligibleForDraw.length, 1)
+      const anglePerParticipant = 360 / participantCount
+      const targetAngle = selectedIndex >= 0
+        ? (selectedIndex * anglePerParticipant + anglePerParticipant / 2)
         : 0
 
       // 旋转转盘（多转几圈 + 目标角度，確保3秒旋轉時間，增加情緒價值）
@@ -592,6 +628,17 @@ export default function LotteryPage() {
     }
   }
 
+  // 可抽獎的參與人（7:00 前簽到且尚未中獎），依編號排序以對應轉盤區塊（須在 early return 前呼叫，符合 Hooks 規則）
+  const eligibleParticipants = useMemo(() => {
+    const winnerIds = new Set(winners.map(w => w.member_id))
+    return checkinMembers
+      .filter(m => !winnerIds.has(m.member_id))
+      .sort((a, b) => a.member_id - b.member_id)
+  }, [checkinMembers, winners])
+
+  const participantCount = eligibleParticipants.length
+  const anglePerParticipant = 360 / Math.max(participantCount, 1)
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-red-50 flex items-center justify-center">
@@ -602,9 +649,6 @@ export default function LotteryPage() {
       </div>
     )
   }
-
-  const prizeCount = prizes.length
-  const anglePerPrize = 360 / Math.max(prizeCount, 1)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-red-50 p-4">
@@ -674,8 +718,8 @@ export default function LotteryPage() {
                          boxShadow: 'inset 0 0 30px rgba(147, 51, 234, 0.2), 0 0 40px rgba(147, 51, 234, 0.3)'
                        }}></div>
                   
-                  {/* 转盘 */}
-                  {prizeCount > 0 ? (
+                  {/* 转盘 - 以參與人為區塊，每格顯示編號，N 人 N 色 */}
+                  {participantCount > 0 ? (
                     <>
                       {/* 转盘主体 */}
                       <div
@@ -683,32 +727,26 @@ export default function LotteryPage() {
                         style={{
                           transform: `rotate(${rotation}deg)`,
                           background: `conic-gradient(
-                            ${prizes.map((_, index) => {
-                              // 更精致的渐变色方案
+                            ${eligibleParticipants.map((_, index) => {
                               const colorPairs = [
-                                ['#FF6B9D', '#C44569'], // 粉红渐变
-                                ['#4ECDC4', '#44A08D'], // 青绿渐变
-                                ['#45B7D1', '#96C93D'], // 蓝绿渐变
-                                ['#FFA07A', '#FF6B6B'], // 橙红渐变
-                                ['#98D8C8', '#6BCB77'], // 薄荷绿渐变
-                                ['#F7DC6F', '#F39C12'], // 金黄渐变
-                                ['#BB8FCE', '#9B59B6'], // 紫蓝渐变
-                                ['#85C1E2', '#3498DB'], // 天蓝渐变
-                                ['#F1948A', '#E74C3C'], // 珊瑚红渐变
-                                ['#85C1E9', '#5DADE2'], // 浅蓝渐变
+                                ['#FF6B9D', '#C44569'], ['#4ECDC4', '#44A08D'], ['#45B7D1', '#96C93D'],
+                                ['#FFA07A', '#FF6B6B'], ['#98D8C8', '#6BCB77'], ['#F7DC6F', '#F39C12'],
+                                ['#BB8FCE', '#9B59B6'], ['#85C1E2', '#3498DB'], ['#F1948A', '#E74C3C'],
+                                ['#85C1E9', '#5DADE2'], ['#A8E6CF', '#56AB2F'], ['#FFD93D', '#F7971E'],
+                                ['#C471ED', '#8E2DE2'], ['#EA384D', '#D31027'], ['#00C9FF', '#92FE9D'],
                               ]
                               const [color1, color2] = colorPairs[index % colorPairs.length]
-                              const startAngle = index * anglePerPrize
-                              const endAngle = (index + 1) * anglePerPrize
+                              const startAngle = index * anglePerParticipant
+                              const endAngle = (index + 1) * anglePerParticipant
                               return `${color1} ${startAngle}deg, ${color2} ${endAngle}deg`
                             }).join(', ')}
                           )`,
                           boxShadow: '0 10px 40px rgba(0, 0, 0, 0.2), inset 0 0 20px rgba(255, 255, 255, 0.3)',
                         }}
                       >
-                        {/* 分隔线 */}
-                        {prizes.map((_, index) => {
-                          const lineAngle = index * anglePerPrize
+                        {/* 分隔線 */}
+                        {eligibleParticipants.map((_, index) => {
+                          const lineAngle = index * anglePerParticipant
                           return (
                             <div
                               key={`line-${index}`}
@@ -724,18 +762,17 @@ export default function LotteryPage() {
                           )
                         })}
                         
-                        {/* 奖品标签 */}
-                        {prizes.map((prize, index) => {
-                          const angle = (index * anglePerPrize + anglePerPrize / 2) * (Math.PI / 180)
+                        {/* 參與人編號標籤 */}
+                        {eligibleParticipants.map((p, index) => {
+                          const angle = (index * anglePerParticipant + anglePerParticipant / 2) * (Math.PI / 180)
                           const radius = 38
                           const x = 50 + radius * Math.cos(angle - Math.PI / 2)
                           const y = 50 + radius * Math.sin(angle - Math.PI / 2)
-                          // 計算文字旋轉角度，讓文字正面顯示（與轉盤旋轉方向相反）
-                          const textRotation = -(index * anglePerPrize + anglePerPrize / 2)
+                          const textRotation = -(index * anglePerParticipant + anglePerParticipant / 2)
 
                           return (
                             <div
-                              key={prize.id}
+                              key={p.member_id}
                               className="absolute"
                               style={{
                                 left: `${x}%`,
@@ -743,24 +780,23 @@ export default function LotteryPage() {
                                 transform: `translate(-50%, -50%) rotate(${textRotation}deg)`,
                               }}
                             >
-                              {/* 奖品名称背景 */}
                               <div 
-                                className="px-3 py-1.5 rounded-lg backdrop-blur-sm"
+                                className="px-2.5 py-1 rounded-lg backdrop-blur-sm"
                                 style={{
-                                  background: 'rgba(255, 255, 255, 0.25)',
+                                  background: 'rgba(255, 255, 255, 0.3)',
                                   boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5)',
                                   border: '1px solid rgba(255, 255, 255, 0.4)',
                                 }}
                               >
                                 <p 
-                                  className="text-white font-bold text-xs sm:text-sm text-center whitespace-nowrap"
+                                  className="text-white font-bold text-sm sm:text-base text-center whitespace-nowrap tabular-nums"
                                   style={{
                                     textShadow: '2px 2px 4px rgba(0, 0, 0, 0.6), 0 0 8px rgba(0, 0, 0, 0.3)',
                                     fontWeight: '700',
                                     letterSpacing: '0.5px',
                                   }}
                                 >
-                                  {prize.name}
+                                  {formatId(p.member_id)}
                                 </p>
                               </div>
                             </div>
@@ -771,8 +807,8 @@ export default function LotteryPage() {
                   ) : (
                     <div className="absolute inset-[6px] rounded-full border-8 border-gray-300 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center shadow-inner">
                       <div className="text-center">
-                        <div className="text-5xl mb-3">🎁</div>
-                        <p className="text-gray-600 font-semibold">請到後台添加獎品</p>
+                        <div className="text-5xl mb-3">👥</div>
+                        <p className="text-gray-600 font-semibold">尚無可抽獎的參與人</p>
                       </div>
                     </div>
                   )}
@@ -876,7 +912,7 @@ export default function LotteryPage() {
               <div className="mt-8 text-center">
                 <button
                   onClick={handleDraw}
-                  disabled={isSpinning || eligibleCount === 0 || prizes.filter(p => p.remaining_quantity > 0).length === 0}
+                  disabled={isSpinning || lotteryClosed || eligibleCount === 0 || prizes.filter(p => p.remaining_quantity > 0).length === 0}
                   className="relative px-10 py-5 bg-gradient-to-r from-purple-600 via-pink-600 to-red-600 text-white rounded-2xl hover:from-purple-700 hover:via-pink-700 hover:to-red-700 transition-all duration-300 font-bold text-lg sm:text-xl shadow-2xl hover:shadow-purple-500/50 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 overflow-hidden group"
                   style={{
                     boxShadow: isSpinning 
@@ -901,13 +937,21 @@ export default function LotteryPage() {
                 </button>
                 
                 {/* 提示信息 */}
-                {checkinCount === 0 && (
+                {lotteryExpired && (
+                  <p className="mt-3 text-sm text-amber-600 font-medium">
+                    抽獎已截止（{lotteryDeadlineLabel} 起名單歸零，隔週四 6:30 開放新週期）
+                  </p>
+                )}
+                {!lotteryExpired && lotteryClosed && (
+                  <p className="mt-3 text-sm text-amber-600 font-medium">抽獎已結束（例會日 6:30～7:00 可抽獎，7:00 截止）</p>
+                )}
+                {!lotteryExpired && !lotteryClosed && checkinCount === 0 && (
                   <p className="mt-3 text-sm text-gray-500">請先進行簽到</p>
                 )}
-                {checkinCount > 0 && eligibleCount === 0 && (
+                {!lotteryExpired && !lotteryClosed && checkinCount > 0 && eligibleCount === 0 && (
                   <p className="mt-3 text-sm text-gray-500">今日可抽獎人數已抽完</p>
                 )}
-                {prizeCount === 0 && (
+                {prizes.length === 0 && (
                   <p className="mt-3 text-sm text-gray-500">請到後台添加獎品</p>
                 )}
               </div>
@@ -931,15 +975,44 @@ export default function LotteryPage() {
                     <p className="text-sm text-gray-400 mt-1">請到後台添加</p>
                   </div>
                 ) : (
-                  prizes.map((prize) => (
+                  prizes.map((prize) => {
+                    const isPinned = selectedPrizeIds.has(prize.id)
+                    return (
                     <div
                       key={prize.id}
-                      className={`p-4 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 ${
+                      className={`relative p-4 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 ${
                         selectedPrize?.id === prize.id
                           ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-pink-50 shadow-lg ring-2 ring-purple-300'
                           : 'border-gray-200 bg-white/80 hover:border-purple-300 hover:shadow-md'
                       }`}
                     >
+                      {/* 右上角勾選：勾選=指定此品項抽獎，未勾=隨機 */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedPrizeIds(prev => {
+                            const next = new Set(prev)
+                            if (next.has(prize.id)) next.delete(prize.id)
+                            else next.add(prize.id)
+                            return next
+                          })
+                        }}
+                        className={`absolute top-2 right-2 w-7 h-7 rounded-md border-2 flex items-center justify-center transition-all ${
+                          isPinned
+                            ? 'border-purple-600 bg-purple-500 text-white shadow-md'
+                            : 'border-gray-300 bg-white/80 text-gray-400 hover:border-purple-400 hover:bg-purple-50'
+                        }`}
+                        title={isPinned ? '已選定，只從勾選的品項抽獎' : '點擊勾選，只抽此品項；未勾選則隨機'}
+                      >
+                        {isPinned ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <div className="w-3 h-3 rounded-sm border border-gray-300" />
+                        )}
+                      </button>
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <img
@@ -975,7 +1048,7 @@ export default function LotteryPage() {
                         </div>
                       </div>
                     </div>
-                  ))
+                  )})
                 )}
               </div>
             </div>

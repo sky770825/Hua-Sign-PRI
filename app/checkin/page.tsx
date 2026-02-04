@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { debounce } from '@/lib/frontend-utils'
+import { ZOOM_MEETING_URL, ZOOM_MEETING_ID_DISPLAY } from '@/lib/meeting-config'
 import type { Member, CheckinRecord } from '@/types'
 
 export default function CheckinPage() {
@@ -10,6 +11,8 @@ export default function CheckinPage() {
   const [selectedMember, setSelectedMember] = useState<number | null>(null)
   const [message, setMessage] = useState('')
   const [meetingStatus, setMeetingStatus] = useState('今日無例會')
+  const [nextMeeting, setNextMeeting] = useState<{ date: string } | null>(null)
+  const [countdown, setCountdown] = useState<string>('')
   const [today, setToday] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -101,6 +104,21 @@ export default function CheckinPage() {
     )
   }, [members, debouncedSearchTerm])
 
+  // 計算下個週四日期（例會固定每週四）
+  const getNextThursdayDate = useCallback((): string | null => {
+    const d = new Date()
+    const day = d.getDay()
+    const thursday = 4
+    let daysUntil = (thursday - day + 7) % 7
+    if (daysUntil === 0) daysUntil = 7
+    const next = new Date(d)
+    next.setDate(d.getDate() + daysUntil)
+    return next.toISOString().split('T')[0]
+  }, [])
+
+  // 一律不快取，避免例會當天 6:30 後仍顯示舊的「今日無例會」或跨日未更新
+  const noStore = { cache: 'no-store' as RequestCache }
+
   // 加载数据的函数
   const loadData = useCallback(async () => {
     setLoadError(null)
@@ -108,8 +126,8 @@ export default function CheckinPage() {
       const todayDate = new Date().toISOString().split('T')[0]
       setToday(todayDate)
 
-      // 获取会员列表
-      const membersRes = await fetch('/api/members')
+      // 获取会员列表（不快取，確保名單與後台一致）
+      const membersRes = await fetch('/api/members', noStore)
       const membersData = await membersRes.json().catch(() => ({}))
       if (!membersRes.ok) {
         const errMsg = membersData?.error || '無法載入會員名單'
@@ -117,8 +135,8 @@ export default function CheckinPage() {
       }
       setMembers(membersData.members || [])
 
-      // 获取今天的签到记录
-      const checkinsRes = await fetch(`/api/checkins?date=${todayDate}`)
+      // 获取今天的签到记录（不快取 + 時間戳防快取，例會當天時間一到即可正確顯示可簽到）
+      const checkinsRes = await fetch(`/api/checkins?date=${todayDate}&_t=${Date.now()}`, noStore)
       if (!checkinsRes.ok) {
         throw new Error('Failed to fetch checkins')
       }
@@ -132,11 +150,26 @@ export default function CheckinPage() {
       }
       setCheckins(checkinMap)
       
-      // 检查会议状态
+      // 檢查會議狀態
       if (checkinsData.meeting) {
         setMeetingStatus(`今日會議：${checkinsData.meeting.date}`)
+        setNextMeeting(null)
       } else {
         setMeetingStatus('今日無例會')
+        // 取得下次例會（最早一場 date > 今天），若無則計算下個週四
+        const meetingsRes = await fetch('/api/meetings?_t=' + Date.now(), noStore)
+        const meetingsData = await meetingsRes.json().catch(() => ({}))
+        const allMeetings = meetingsData.meetings || []
+        const futureMeetings = allMeetings.filter((m: { date: string }) => m.date > todayDate)
+        let next = futureMeetings.length > 0
+          ? futureMeetings.reduce((a: { date: string }, b: { date: string }) => (a.date < b.date ? a : b))
+          : null
+        if (!next) {
+          // 無未來會議時，以「下個週四」為預估
+          const nextThu = getNextThursdayDate()
+          next = nextThu ? { date: nextThu } : null
+        }
+        setNextMeeting(next)
       }
     } catch (err) {
       console.error('Error fetching data:', err)
@@ -145,14 +178,51 @@ export default function CheckinPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [getNextThursdayDate])
 
-  // 初始載入 + 每30秒自動刷新（只依賴 loadData，避免過度重跑）
+  // 初始載入 + 定時刷新（20 秒），確保跨日或例會 6:30 後不久即可更新會議狀態，避免快取導致無法簽到
   useEffect(() => {
     loadData()
-    const interval = setInterval(loadData, 30000)
+    const interval = setInterval(loadData, 20000)
     return () => clearInterval(interval)
   }, [loadData])
+
+  // 分頁重新可見時立即重拉資料（例：從其他分頁切回時已過 6:30 或跨日）
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadData()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [loadData])
+
+  // 倒數計時（會議室 6:30 開放，每分鐘更新）
+  useEffect(() => {
+    if (!nextMeeting?.date) {
+      setCountdown('')
+      return
+    }
+    const tick = () => {
+      const now = new Date()
+      const target = new Date(nextMeeting.date + 'T06:30:00+08:00')
+      if (now >= target) {
+        setCountdown('例會已開始或已結束')
+        return
+      }
+      const diff = target.getTime() - now.getTime()
+      const days = Math.floor(diff / (24 * 60 * 60 * 1000))
+      const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000))
+      const mins = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000))
+      const parts = []
+      if (days > 0) parts.push(`${days} 天`)
+      parts.push(`${hours} 小時`)
+      parts.push(`${mins} 分`)
+      setCountdown(parts.join(' '))
+    }
+    tick()
+    const interval = setInterval(tick, 60000)
+    return () => clearInterval(interval)
+  }, [nextMeeting?.date])
 
   // 鍵盤快捷鍵：Ctrl/Cmd+Enter 提交簽到（獨立 effect，用 ref 避免 deps 導致重跑）
   const submitCheckinRef = useRef(submitCheckin)
@@ -227,12 +297,6 @@ export default function CheckinPage() {
             </div>
             <div className="flex gap-2">
               <a
-                href="/lottery"
-                className="px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-lg hover:bg-white/30 transition-all duration-200 font-medium text-sm border border-white/30 shadow-sm"
-              >
-                🎰 抽獎轉盤
-              </a>
-              <a
                 href="/admin/login"
                 className="px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-lg hover:bg-white/30 transition-all duration-200 font-medium text-sm border border-white/30 shadow-sm"
               >
@@ -252,102 +316,161 @@ export default function CheckinPage() {
             </div>
             <h2 className="text-lg sm:text-xl font-bold text-gray-800">{meetingStatus}</h2>
           </div>
+          {meetingStatus !== '今日無例會' && (
+            <div className="ml-13 pl-1 mt-3 flex flex-wrap items-center gap-3">
+              <a
+                href={ZOOM_MEETING_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold text-sm shadow-md hover:from-blue-700 hover:to-indigo-700 transition-all"
+              >
+                🎥 加入 Zoom 會議室
+              </a>
+              <span className="text-gray-600 text-xs font-medium">
+                會議 ID: {ZOOM_MEETING_ID_DISPLAY}
+              </span>
+            </div>
+          )}
           {meetingStatus === '今日無例會' && (
-            <>
-              <div className="ml-13 pl-1">
-                <p className="text-red-600 text-sm font-semibold flex items-center gap-2">
-                  <span className="text-lg">💤</span>
-                  <span>今天沒有安排例會，無法進行簽到</span>
-                </p>
+            <div className="ml-13 pl-1 space-y-3">
+              <p className="text-red-600 text-sm font-semibold flex items-center gap-2">
+                <span className="text-lg">💤</span>
+                <span>今天沒有安排例會，無法進行簽到</span>
+              </p>
+              {nextMeeting && (
+                <div className="rounded-lg bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 p-4 space-y-2">
+                  <p className="text-indigo-800 font-semibold text-sm flex items-center gap-2">
+                    <span>📅</span>
+                    下次例會：{new Date(nextMeeting.date + 'T12:00:00').toLocaleDateString('zh-TW', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      weekday: 'long',
+                    })}
+                  </p>
+                  {countdown && (
+                    <p className="text-indigo-600 font-bold text-lg flex items-center gap-2">
+                      <span className="text-xl">⏱</span>
+                      距離會議室開放還有 {countdown}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-3 mt-2 pt-2 border-t border-indigo-100">
+                    <a
+                      href={ZOOM_MEETING_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg font-semibold text-sm shadow-md hover:from-blue-700 hover:to-indigo-700 transition-all"
+                    >
+                      🎥 加入 Zoom 會議室
+                    </a>
+                    <span className="text-indigo-600/80 text-xs font-medium">
+                      會議 ID: {ZOOM_MEETING_ID_DISPLAY}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {!nextMeeting && (
                 <p className="text-gray-500 text-xs mt-2 ml-6">
                   請聯繫管理員確認會議時間安排
                 </p>
-              </div>
-            </>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Checkin Form - 優雅設計 */}
-        {meetingStatus !== '今日無例會' && (
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-5 sm:p-6 border border-white/50">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-md">
-                <span className="text-xl">👋</span>
-              </div>
-              <div>
-                <h2 className="text-base sm:text-lg font-bold text-gray-800">簽到前留言一下吧</h2>
-                <p className="text-gray-600 text-sm mt-0.5">告訴我們，您的事業需要什麼幫助？</p>
-              </div>
+        {/* Checkin Form - 簽到區（例會日可簽到，非例會日顯示提示） */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-5 sm:p-6 border border-white/50">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center shadow-md">
+              <span className="text-xl">👋</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-              <div className="sm:col-span-4">
-                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  選擇您的名字
-                </label>
-                <select
-                  value={selectedMember || ''}
-                  onChange={(e) => setSelectedMember(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm bg-white shadow-sm hover:border-gray-400"
-                >
-                  <option value="">請選擇您的名字</option>
-                  {filteredMembers.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.id} {member.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="sm:col-span-6">
-                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  留言（選填）
-                </label>
-                <textarea
-                  value={message}
-                  onChange={(e) => {
-                    if (e.target.value.length <= 500) {
-                      setMessage(e.target.value)
-                    }
-                  }}
-                  maxLength={500}
-                  className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none text-sm min-h-[42px] bg-white shadow-sm hover:border-gray-400"
-                  placeholder="輸入您的留言...（最多500字）"
-                  rows={1}
-                />
-                {message.length > 0 && (
-                  <div className="text-xs text-gray-500 mt-1 text-right">
-                    {message.length} / 500
-                  </div>
-                )}
-              </div>
-              <div className="sm:col-span-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMessage('')
-                    setSelectedMember(null)
-                  }}
-                  className="px-4 py-2.5 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all border border-gray-300 shadow-sm font-medium"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={submitCheckin}
-                  disabled={!selectedMember || submitting}
-                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                      <span>簽到中...</span>
-                    </>
-                  ) : (
-                    '送出並簽到'
-                  )}
-                </button>
-              </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-gray-800">
+                {meetingStatus === '今日無例會' ? '簽到區（例會當天開放）' : '簽到前留言一下吧'}
+              </h2>
+              <p className="text-gray-600 text-sm mt-0.5">
+                {meetingStatus === '今日無例會'
+                  ? (nextMeeting ? `例會當天開放簽到` : '例會當天開放')
+                  : '告訴我們，您的事業需要什麼幫助？'}
+              </p>
             </div>
           </div>
-        )}
+          <p className="text-gray-500 text-xs sm:text-sm mb-4 border-l-2 border-indigo-300 pl-3">
+            會議室 6:30 開放｜簽到 6:30～8:45｜7:00 前簽到才進獎品區
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+            <div className="sm:col-span-4">
+              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                選擇您的名字
+              </label>
+              <select
+                value={selectedMember || ''}
+                onChange={(e) => setSelectedMember(e.target.value ? parseInt(e.target.value) : null)}
+                disabled={meetingStatus === '今日無例會'}
+                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm bg-white shadow-sm hover:border-gray-400 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <option value="">請選擇您的名字</option>
+                {filteredMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.id} {member.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-6">
+              <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                留言（選填）
+              </label>
+              <textarea
+                value={message}
+                onChange={(e) => {
+                  if (e.target.value.length <= 500) {
+                    setMessage(e.target.value)
+                  }
+                }}
+                maxLength={500}
+                disabled={meetingStatus === '今日無例會'}
+                className="w-full px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none text-sm min-h-[42px] bg-white shadow-sm hover:border-gray-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                placeholder={meetingStatus === '今日無例會' ? '例會當天開放' : '輸入您的留言...（最多500字）'}
+                rows={1}
+              />
+              {message.length > 0 && (
+                <div className="text-xs text-gray-500 mt-1 text-right">
+                  {message.length} / 500
+                </div>
+              )}
+            </div>
+            <div className="sm:col-span-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMessage('')
+                  setSelectedMember(null)
+                }}
+                disabled={meetingStatus === '今日無例會'}
+                className="px-4 py-2.5 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all border border-gray-300 shadow-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                取消
+              </button>
+              <button
+                onClick={submitCheckin}
+                disabled={meetingStatus === '今日無例會' || !selectedMember || submitting}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+              >
+                {submitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                    <span>簽到中...</span>
+                  </>
+                ) : meetingStatus === '今日無例會' ? (
+                  '例會當天開放'
+                ) : (
+                  '送出並簽到'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Checkin Table - 優雅設計 */}
         <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg p-5 sm:p-6 border border-white/50 overflow-hidden">
@@ -359,11 +482,13 @@ export default function CheckinPage() {
                     <span className="text-xl">🐾</span>
                   </div>
                   <h2 className="text-base sm:text-lg font-bold text-gray-800">
-                    今日無例會｜會員清單僅供查看，無法簽到
+                    {nextMeeting
+                      ? `下次例會 ${nextMeeting.date}｜會員清單僅供查看，無法簽到`
+                      : '今日無例會｜會員清單僅供查看，無法簽到'}
                   </h2>
                 </div>
                 <p className="text-gray-500 text-sm italic ml-13 pl-1">
-                  曾經有一份真摯的選單在我面前，我沒有簽到，等到過了七點才後悔莫及
+                  {nextMeeting ? '記得準時出席哦！' : '曾經有一份真摯的選單在我面前，我沒有簽到，等到過了七點才後悔莫及'}
                 </p>
               </>
             ) : (

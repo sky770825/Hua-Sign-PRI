@@ -78,10 +78,18 @@ export async function GET(request: Request) {
       }
     })
 
-    return NextResponse.json({
-      meeting: meetings || null,
-      checkins: formattedCheckins,
-    })
+    return NextResponse.json(
+      {
+        meeting: meetings || null,
+        checkins: formattedCheckins,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          Pragma: 'no-cache',
+        },
+      }
+    )
   } catch (error) {
     console.error('Error fetching checkins:', error)
     const msg = error instanceof Error ? error.message : 'Failed to fetch checkins'
