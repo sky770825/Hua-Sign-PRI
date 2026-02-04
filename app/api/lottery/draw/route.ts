@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
-    const { data: body, error: parseError } = await safeJsonParse<{ date?: string; prizeIds?: number[] }>(request)
+    const { data: body, error: parseError } = await safeJsonParse<{ date?: string; prizeIds?: number[]; _testBypassTime?: boolean }>(request)
     
     if (parseError) {
       return apiError('請求格式錯誤：無法解析 JSON', 400)
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     const totalWinners = winnersData?.length ?? 0
 
     // 3. 獲取可抽獎的簽到會員（7:00 前簽到、排除已中獎）
-    const memberIdsBefore7 = [...new Set(eligibleForLottery.map((c: any) => c.member_id))]
+    const memberIdsBefore7 = Array.from(new Set(eligibleForLottery.map((c: any) => c.member_id)))
     const { data: allCheckins } = await supabaseService
       .from(TABLES.CHECKINS)
       .select(`
