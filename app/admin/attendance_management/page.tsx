@@ -222,7 +222,9 @@ export default function AttendanceManagement() {
     try {
       const targetDate = dateOverride ?? selectedDate
       // 單一情境 API：一次取得 members、meetings、checkinsByDate、meetingStats
-      const contextRes = await fetchWithTimeout('/api/attendance/context', undefined, 12000)
+      // 非靜默載入（使用者操作、匯入後等）帶 fresh=1 跳過快取，確保看到最新會員與簽到
+      const contextUrl = silent ? '/api/attendance/context' : '/api/attendance/context?fresh=1'
+      const contextRes = await fetchWithTimeout(contextUrl, undefined, 12000)
       if (!contextRes.ok) {
         console.warn('Context API failed, fallback to empty data')
         setMembers([])

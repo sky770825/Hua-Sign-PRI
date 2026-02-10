@@ -1,33 +1,44 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, handleDatabaseError, ensureSupabaseConfigured } from '@/lib/api-utils'
-import { withCache, CacheKeys, CacheConfig } from '@/lib/cache'
+import { withCache, CacheKeys, CacheConfig, clearCache } from '@/lib/cache'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 export const fetchCache = 'force-no-store'
 
-export async function GET() {
+async function fetchMembersFromDb() {
+  const { data, error } = await supabaseService
+    .from(TABLES.MEMBERS)
+    .select('id, name, profession')
+    .order('id', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching members:', error)
+    throw new Error(`查詢會員失敗：${handleDatabaseError(error)}`)
+  }
+
+  return data || []
+}
+
+export async function GET(request: Request) {
   const envErr = ensureSupabaseConfigured()
   if (envErr) return envErr
   try {
-    const members = await withCache(
-      CacheKeys.MEMBERS,
-      async () => {
-        const { data, error } = await supabaseService
-          .from(TABLES.MEMBERS)
-          .select('id, name, profession')
-          .order('id', { ascending: true })
+    const { searchParams } = new URL(request.url)
+    const nocache = searchParams.get('nocache') === '1' || searchParams.get('nocache') === 'true'
 
-        if (error) {
-          console.error('Error fetching members:', error)
-          throw new Error(`查詢會員失敗：${handleDatabaseError(error)}`)
-        }
-
-        return data || []
-      },
-      CacheConfig.MEMBERS_TTL
-    )
+    let members: Awaited<ReturnType<typeof fetchMembersFromDb>>
+    if (nocache) {
+      clearCache(CacheKeys.MEMBERS)
+      members = await fetchMembersFromDb()
+    } else {
+      members = await withCache(
+        CacheKeys.MEMBERS,
+        fetchMembersFromDb,
+        CacheConfig.MEMBERS_TTL
+      )
+    }
 
     return NextResponse.json(
       { members },

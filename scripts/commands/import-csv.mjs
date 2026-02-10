@@ -131,4 +131,5 @@ export async function run(file) {
   console.log(`📤 將匯入 ${result.toImport} 筆簽到記錄`)
   console.log(`✅ 會員資料已更新`)
   console.log(`\n✅ 匯入完成！新增簽到：${result.created} 筆，已存在/跳過：${result.skipped} 筆`)
+  console.log(`💡 若前端會員名單未更新，請在簽到頁或後台點「重新載入」取得最新名單。`)
 }

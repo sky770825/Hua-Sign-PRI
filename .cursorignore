@@ -1,0 +1,23 @@
+# 依賴與建置（通常不需讀取）
+node_modules
+.next
+out
+build
+
+# 獨立工具目錄
+cursor自動化指揮官
+
+# 歸檔文件（歷史修復紀錄、一次性腳本）
+docs/archive
+
+# 備份與匯出腳本
+backup_database.sql
+export_database_data.sql
+
+# 環境與敏感
+.env
+.env.*
+*.local
+
+# Git
+.git
