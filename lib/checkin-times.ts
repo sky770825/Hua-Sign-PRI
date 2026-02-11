@@ -34,6 +34,13 @@ export function getTodayTaipei(): string {
 }
 
 /**
+ * 該日期在台北時區是否為週四（例會日）
+ */
+export function isThursdayInTaipei(dateStr: string): boolean {
+  return new Date(dateStr + 'T12:00:00+08:00').getDay() === 4
+}
+
+/**
  * 取得目前台北時間的總分鐘數（當日 0:00 起算）
  */
 function getNowMinsTaipei(): { mins: number; dateStr: string } {

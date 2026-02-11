@@ -555,14 +555,14 @@ export default function AttendanceManagement() {
     return () => { document.body.style.overflow = '' }
   }, [showImagePreview])
 
-  // 获取下一个周四的日期
+  // 取得「今天若為週四則今天，否則下一個週四」的日期（例會固定週四，建立例會時週四當天應可建立今日）
   const getNextThursday = (): string => {
     const today = new Date()
     const dayOfWeek = today.getDay() // 0 = Sunday, 4 = Thursday
-    const daysUntilThursday = (4 - dayOfWeek + 7) % 7 || 7 // 如果今天是周四，则取下一个周四
-    const nextThursday = new Date(today)
-    nextThursday.setDate(today.getDate() + daysUntilThursday)
-    return nextThursday.toISOString().split('T')[0]
+    const daysToAdd = dayOfWeek === 4 ? 0 : ((4 - dayOfWeek + 7) % 7 || 7)
+    const target = new Date(today)
+    target.setDate(today.getDate() + daysToAdd)
+    return target.toISOString().split('T')[0]
   }
 
   // 检查日期是否为周四

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
 import { handleDatabaseError } from '@/lib/api-utils'
+import { getTodayTaipei, isThursdayInTaipei } from '@/lib/checkin-times'
+import { clearCacheByPrefix } from '@/lib/cache'
 
 // 標記為動態路由（因為使用了 request.url）
 export const dynamic = 'force-dynamic'
@@ -13,7 +15,7 @@ export async function GET(request: Request) {
     const date = searchParams.get('date') || new Date().toISOString().split('T')[0]
 
     // 獲取會議信息（使用 supabaseService 繞過 RLS）
-    const { data: meetings, error: meetingError } = await supabaseService
+    let { data: meetings, error: meetingError } = await supabaseService
       .from(TABLES.MEETINGS)
       .select('*')
       .eq('date', date)
@@ -21,6 +23,20 @@ export async function GET(request: Request) {
 
     if (meetingError) {
       console.error('Error fetching meeting:', meetingError)
+    }
+
+    // 例會固定週四：若查詢的是「今日（台北）」且為週四但尚無會議，自動建立一筆，避免顯示「今日無例會」
+    const todayTaipei = getTodayTaipei()
+    if (!meetings && date === todayTaipei && isThursdayInTaipei(date)) {
+      const { data: inserted, error: insertErr } = await supabaseService
+        .from(TABLES.MEETINGS)
+        .insert([{ date, status: 'scheduled' }])
+        .select()
+        .single()
+      if (!insertErr && inserted) {
+        meetings = inserted
+        clearCacheByPrefix('meetings:')
+      }
     }
 
     // 獲取簽到記錄（包含會員信息）
