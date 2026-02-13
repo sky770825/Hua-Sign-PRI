@@ -96,6 +96,38 @@ export function ensureSupabaseConfigured(): NextResponse | null {
 }
 
 /**
+ * 限制為同源請求（降低跨站請求風險）
+ */
+export function requireSameOrigin(request: Request): NextResponse | null {
+  const requestUrl = new URL(request.url)
+  const origin = request.headers.get('origin')
+  const referer = request.headers.get('referer')
+
+  if (origin && origin !== requestUrl.origin) {
+    return apiError('拒絕跨來源請求', 403)
+  }
+
+  if (!origin && referer && !referer.startsWith(requestUrl.origin)) {
+    return apiError('拒絕跨來源請求', 403)
+  }
+
+  return null
+}
+
+/**
+ * 高風險管理操作（資料還原/資料表建立）開關
+ */
+export function requireDangerousAdminOpsEnabled(): NextResponse | null {
+  if (process.env.ENABLE_DANGEROUS_ADMIN_OPS === 'true') {
+    return null
+  }
+  return apiError(
+    '此操作在目前環境已停用。若要啟用，請設定 ENABLE_DANGEROUS_ADMIN_OPS=true',
+    403
+  )
+}
+
+/**
  * 處理資料庫錯誤，返回中文錯誤訊息
  */
 export function handleDatabaseError(error: any, defaultMessage: string = '資料庫錯誤'): string {
@@ -126,4 +158,3 @@ export function handleDatabaseError(error: any, defaultMessage: string = '資料
   
   return errorMessage || defaultMessage
 }
-

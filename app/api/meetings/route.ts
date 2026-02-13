@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
-import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
+import { apiError, apiSuccess, safeJsonParse, handleDatabaseError, requireSameOrigin } from '@/lib/api-utils'
 import { validateMeeting } from '@/lib/validation'
 import { withCache, CacheKeys, CacheConfig, clearCacheByPrefix, clearCache } from '@/lib/cache'
 
@@ -12,6 +12,9 @@ export const fetchCache = 'force-no-store'
 
 export async function POST(request: Request) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+
     const { data: body, error: parseError } = await safeJsonParse<{ date?: string; status?: string }>(request)
     
     if (parseError || !body) {
@@ -108,4 +111,3 @@ export async function GET() {
     return apiError(`查詢會議失敗：${errorMessage}`, 500)
   }
 }
-

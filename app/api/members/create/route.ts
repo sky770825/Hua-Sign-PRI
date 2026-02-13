@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
-import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
+import { apiError, apiSuccess, safeJsonParse, handleDatabaseError, requireSameOrigin } from '@/lib/api-utils'
 import { validateMember } from '@/lib/validation'
 import { clearCacheByPrefix, CacheKeys } from '@/lib/cache'
 
@@ -34,6 +34,9 @@ async function syncToGoogleSheets() {
 
 export async function POST(request: Request) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+
     const { data: body, error: parseError } = await safeJsonParse<{
       id?: any
       name?: string
@@ -136,4 +139,3 @@ export async function POST(request: Request) {
     return apiError('新增會員失敗，請稍後再試', 500)
   }
 }
-

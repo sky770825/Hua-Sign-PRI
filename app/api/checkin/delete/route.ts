@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
-import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
+import { apiError, apiSuccess, safeJsonParse, handleDatabaseError, requireSameOrigin } from '@/lib/api-utils'
 import { validateCheckin } from '@/lib/validation'
 import { clearCache } from '@/lib/cache'
 
@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+
     const { data: body, error: parseError } = await safeJsonParse<{ memberId?: any; date?: string }>(request)
     
     if (parseError || !body) {
@@ -90,4 +93,3 @@ export async function POST(request: Request) {
     return apiError(`刪除簽到記錄失敗：${errorMessage}`, 500)
   }
 }
-

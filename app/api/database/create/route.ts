@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseService } from '@/lib/supabase'
-import { apiError, apiSuccess } from '@/lib/api-utils'
+import { apiError, apiSuccess, requireDangerousAdminOpsEnabled, requireSameOrigin } from '@/lib/api-utils'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -210,8 +210,13 @@ SELECT '✅ 所有 estate_attendance 資料表已成功建立！' AS message,
        '5. 抽獎記錄 (estate_attendance_lottery_winners)' AS table5;
 `
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+    const dangerousOpCheck = requireDangerousAdminOpsEnabled()
+    if (dangerousOpCheck) return dangerousOpCheck
+
     console.log('開始檢查資料庫表...')
 
     // 檢查表是否存在

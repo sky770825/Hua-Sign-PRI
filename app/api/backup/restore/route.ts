@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase, supabaseService, TABLES } from '@/lib/supabase'
-import { apiError, apiSuccess, handleDatabaseError } from '@/lib/api-utils'
+import { apiError, apiSuccess, handleDatabaseError, requireDangerousAdminOpsEnabled, requireSameOrigin } from '@/lib/api-utils'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -17,6 +17,11 @@ interface BackupData {
 
 export async function POST(request: Request) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+    const dangerousOpCheck = requireDangerousAdminOpsEnabled()
+    if (dangerousOpCheck) return dangerousOpCheck
+
     const body = await request.json()
     const backupData: BackupData = body.data
 

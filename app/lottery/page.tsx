@@ -7,6 +7,15 @@ import { getPrizeImageUrl } from '@/lib/prize-placeholder'
 import { isLotteryClosed, isLotteryExpired, getLotteryDeadlineLabel } from '@/lib/lottery-deadline'
 import type { Prize, CheckinMember, Winner, WinnerRecord } from '@/types'
 
+const SPIN_CONFIGS = {
+  quick: { label: '快速 4.5 秒', durationMs: 4500, rotations: 6 },
+  standard: { label: '標準 6 秒', durationMs: 6000, rotations: 7 },
+  tension: { label: '緊張 7 秒', durationMs: 7000, rotations: 8 },
+} as const
+type SpinConfigKey = keyof typeof SPIN_CONFIGS
+const SOUND_STORAGE_KEY = 'lottery_sound_enabled'
+const SPIN_CONFIG_STORAGE_KEY = 'lottery_spin_config'
+
 export default function LotteryPage() {
   const [prizes, setPrizes] = useState<Prize[]>([])
   const [checkinMembers, setCheckinMembers] = useState<CheckinMember[]>([])
@@ -39,7 +48,137 @@ export default function LotteryPage() {
   const [lotteryExpired, setLotteryExpired] = useState(false)
   const [lotteryClosed, setLotteryClosed] = useState(false)
   const [lotteryDeadlineLabel, setLotteryDeadlineLabel] = useState('')
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [spinConfigKey, setSpinConfigKey] = useState<SpinConfigKey>('tension')
   const loadIdRef = useRef(0)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const spinSoundIntervalRef = useRef<number | null>(null)
+  const spinConfig = SPIN_CONFIGS[spinConfigKey]
+
+  const stopSpinSound = useCallback(() => {
+    if (spinSoundIntervalRef.current) {
+      window.clearInterval(spinSoundIntervalRef.current)
+      spinSoundIntervalRef.current = null
+    }
+  }, [])
+
+  const ensureAudioContext = useCallback(async () => {
+    if (typeof window === 'undefined') return null
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioContextClass) return null
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextClass()
+    }
+    if (audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume()
+    }
+    return audioContextRef.current
+  }, [])
+
+  const playTone = useCallback(async (
+    frequency: number,
+    durationMs: number,
+    type: OscillatorType,
+    volume = 0.03
+  ) => {
+    if (!soundEnabled) return
+    const ctx = await ensureAudioContext()
+    if (!ctx) return
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = type
+    osc.frequency.setValueAtTime(frequency, ctx.currentTime)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(volume, ctx.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs / 1000)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + durationMs / 1000 + 0.03)
+  }, [ensureAudioContext, soundEnabled])
+
+  const playWinJingle = useCallback(async () => {
+    if (!soundEnabled) return
+    const ctx = await ensureAudioContext()
+    if (!ctx) return
+    const notes = [
+      { freq: 523.25, when: 0, duration: 120 },
+      { freq: 659.25, when: 0.12, duration: 120 },
+      { freq: 783.99, when: 0.24, duration: 160 },
+      { freq: 1046.5, when: 0.4, duration: 280 },
+    ]
+    notes.forEach(note => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      const startAt = ctx.currentTime + note.when
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(note.freq, startAt)
+      gain.gain.setValueAtTime(0.0001, startAt)
+      gain.gain.exponentialRampToValueAtTime(0.06, startAt + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + note.duration / 1000)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(startAt)
+      osc.stop(startAt + note.duration / 1000 + 0.03)
+    })
+  }, [ensureAudioContext, soundEnabled])
+
+  const startSpinSound = useCallback(async () => {
+    if (!soundEnabled) return
+    const ctx = await ensureAudioContext()
+    if (!ctx) return
+    stopSpinSound()
+    await playTone(210, 120, 'sawtooth', 0.035)
+    let step = 0
+    spinSoundIntervalRef.current = window.setInterval(() => {
+      const freq = 420 + (step % 6) * 40
+      playTone(freq, 85, 'square', 0.018).catch(() => null)
+      step += 1
+    }, 110)
+  }, [ensureAudioContext, playTone, soundEnabled, stopSpinSound])
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(SOUND_STORAGE_KEY)
+      if (saved === '0') setSoundEnabled(false)
+      const savedSpinConfig = window.localStorage.getItem(SPIN_CONFIG_STORAGE_KEY)
+      if (savedSpinConfig && savedSpinConfig in SPIN_CONFIGS) {
+        setSpinConfigKey(savedSpinConfig as SpinConfigKey)
+      }
+    } catch {
+      // ignore localStorage read errors
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SOUND_STORAGE_KEY, soundEnabled ? '1' : '0')
+    } catch {
+      // ignore localStorage write errors
+    }
+  }, [soundEnabled])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SPIN_CONFIG_STORAGE_KEY, spinConfigKey)
+    } catch {
+      // ignore localStorage write errors
+    }
+  }, [spinConfigKey])
+
+  useEffect(() => {
+    if (soundEnabled) return
+    stopSpinSound()
+  }, [soundEnabled, stopSpinSound])
+
+  useEffect(() => {
+    return () => {
+      stopSpinSound()
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(() => null)
+      }
+    }
+  }, [stopSpinSound])
 
   const loadData = useCallback(async (showLoading = true) => {
     const currentLoadId = ++loadIdRef.current
@@ -314,6 +453,7 @@ export default function LotteryPage() {
     setIsSpinning(true)
     setSelectedPrize(null)
     setWinner(null)
+    startSpinSound().catch(() => null)
 
     try {
       // 抽獎前強制取得最新獎品，確保轉盤與 API 一致
@@ -374,16 +514,15 @@ export default function LotteryPage() {
         ? (selectedIndex * anglePerParticipant + anglePerParticipant / 2)
         : 0
 
-      // 旋转转盘（多转几圈 + 目标角度，確保3秒旋轉時間，增加情緒價值）
-      // 轉5圈增加期待感，加上緩動效果
-      const spinRotation = 360 * 5 + (360 - (rotation % 360)) + targetAngle
+      // 旋轉轉盤（多轉幾圈 + 目標角度）
+      // 轉數與時長由常數控制，避免動畫時間與業務邏輯不同步
+      const spinRotation = 360 * spinConfig.rotations + (360 - (rotation % 360)) + targetAngle
       setRotation(prev => prev + spinRotation)
-      
-      // 添加音效提示（可選，未來可擴展）
-      console.log('🎰 轉盤開始旋轉！')
 
-      // 等待转盘旋转完成（3秒，增加情緒價值）
+      // 等待轉盤旋轉完成
       setTimeout(() => {
+        stopSpinSound()
+        playWinJingle().catch(() => null)
         setSelectedPrize(data.prize)
         setWinner(data.winner || null)
         setIsSpinning(false)
@@ -500,8 +639,9 @@ export default function LotteryPage() {
             setShowWinnerModal(true)
           }, 0)
         }
-      }, 3000) // 確保3秒旋轉時間
+      }, spinConfig.durationMs)
     } catch (error) {
+      stopSpinSound()
       console.error('❌ 抽獎錯誤:', error)
       const errorMessage = error instanceof Error ? error.message : '抽獎失敗'
       alert(`抽獎失敗：${errorMessage}`)
@@ -724,9 +864,11 @@ export default function LotteryPage() {
                     <>
                       {/* 转盘主体 */}
                       <div
-                        className="absolute inset-[6px] rounded-full transition-transform duration-[3000ms] ease-out shadow-2xl"
+                        className="absolute inset-[6px] rounded-full transition-transform shadow-2xl"
                         style={{
                           transform: `rotate(${rotation}deg)`,
+                          transitionDuration: `${spinConfig.durationMs}ms`,
+                          transitionTimingFunction: 'cubic-bezier(0.1, 0.85, 0.15, 1)',
                           background: `conic-gradient(
                             ${eligibleParticipants.map((_, index) => {
                               const colorPairs = [
@@ -939,6 +1081,47 @@ export default function LotteryPage() {
                     </span>
                   )}
                 </button>
+
+                <div className="mt-4 p-4 rounded-xl bg-white/70 border border-purple-100 shadow-sm text-left max-w-xl mx-auto">
+                  <p className="text-sm font-bold text-purple-700 mb-3">抽獎效果設定</p>
+                  <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const next = !soundEnabled
+                          setSoundEnabled(next)
+                          if (next) {
+                            await ensureAudioContext()
+                            await playTone(520, 110, 'triangle', 0.04)
+                          } else {
+                            stopSpinSound()
+                          }
+                        } catch (err) {
+                          console.warn('切換音效失敗:', err)
+                        }
+                      }}
+                      className="px-3 py-2 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-800 text-sm font-semibold transition-colors"
+                      title="切換抽獎音效"
+                    >
+                      {soundEnabled ? '🔊 音效開啟中（緊張＋揭曉）' : '🔇 音效已關閉'}
+                    </button>
+                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <span>轉盤模式</span>
+                      <select
+                        value={spinConfigKey}
+                        onChange={(e) => setSpinConfigKey(e.target.value as SpinConfigKey)}
+                        disabled={isSpinning}
+                        className="px-3 py-2 rounded-lg border border-purple-200 bg-white text-gray-700 text-sm font-medium disabled:bg-gray-100 disabled:text-gray-400"
+                        title="調整轉盤時間與圈數"
+                      >
+                        {(Object.entries(SPIN_CONFIGS) as [SpinConfigKey, (typeof SPIN_CONFIGS)[SpinConfigKey]][]).map(([key, config]) => (
+                          <option key={key} value={key}>{config.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </div>
                 
                 {/* 提示信息 */}
                 {lotteryExpired && (

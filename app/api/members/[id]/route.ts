@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
-import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
+import { apiError, apiSuccess, safeJsonParse, handleDatabaseError, requireSameOrigin } from '@/lib/api-utils'
 import { validateMember } from '@/lib/validation'
 import { clearCacheByPrefix, CacheKeys } from '@/lib/cache'
 
@@ -37,6 +37,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+
     // Next.js 15+ 使用 Promise
     const resolvedParams = await params
     const { data: body, error: parseError } = await safeJsonParse<{
@@ -110,6 +113,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+
     // Next.js 15+ 使用 Promise
     const resolvedParams = await params
     const id = parseInt(resolvedParams.id)
@@ -175,5 +181,4 @@ export async function DELETE(
     return apiError(`刪除會員失敗：${errorMessage}`, 500)
   }
 }
-
 

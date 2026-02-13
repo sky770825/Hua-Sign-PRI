@@ -130,8 +130,6 @@ export default function AttendanceManagement() {
   const [careListLoading, setCareListLoading] = useState(false)
   const [careListSummary, setCareListSummary] = useState({ high: 0, medium: 0, low: 0 })
   const [careListFilter, setCareListFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all')
-  const [showPasswordModal, setShowPasswordModal] = useState(false)
-  const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' })
   const [systemSettings, setSystemSettings] = useState({ autoBackup: false, emailNotifications: false, defaultMeetingTime: '06:30', lateThreshold: '07:00', checkinDeadline: '08:45' })
   useEffect(() => {
     try {
@@ -426,7 +424,7 @@ export default function AttendanceManagement() {
       
       return () => clearInterval(interval)
     }
-  }, [activeTab]) // 移除 loadData 依賴，避免無限循環
+  }, [activeTab, loadData])
 
   useEffect(() => {
     setAbsentDrafts({})
@@ -1682,43 +1680,6 @@ export default function AttendanceManagement() {
     event.target.value = ''
   }
 
-  const handleChangePassword = async () => {
-    try {
-      const verifyRes = await fetch('/api/admin/verify-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: passwordForm.oldPassword }),
-      })
-      const verifyData = await verifyRes.json().catch(() => ({}))
-      if (!verifyData.valid) {
-        setToast({ message: '舊密碼錯誤', type: 'error' })
-        return
-      }
-    } catch {
-      setToast({ message: '驗證失敗', type: 'error' })
-      return
-    }
-
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setToast({ message: '新密碼與確認密碼不一致', type: 'error' })
-      return
-    }
-
-    if (passwordForm.newPassword.length < 4) {
-      setToast({ message: '新密碼長度至少需要4個字元', type: 'error' })
-      return
-    }
-
-    localStorage.setItem('adminPassword', passwordForm.newPassword)
-    setToast({
-      message: '密碼已更新（僅限本次瀏覽）。正式環境請在 .env.local 設定 ADMIN_PASSWORD',
-      type: 'success',
-    })
-    setTimeout(() => setToast(null), 5000)
-    setShowPasswordModal(false)
-    setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' })
-  }
-
   const handleBackupDatabase = async () => {
     try {
       setToast({ message: '正在備份資料...', type: 'info' })
@@ -2412,7 +2373,7 @@ export default function AttendanceManagement() {
                 onClick={handleLogout}
                 className="px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-lg hover:bg-white/30 transition-all border border-white/30 font-medium text-sm sm:text-base"
               >
-                登出
+                返回前台
               </button>
             </div>
           </div>
@@ -3779,20 +3740,6 @@ export default function AttendanceManagement() {
 
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            {/* Password Settings */}
-            <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4 sm:p-6 border border-gray-100">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>🔐</span>
-                <span>密碼設定</span>
-              </h2>
-              <button
-                onClick={() => setShowPasswordModal(true)}
-                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all font-semibold text-sm"
-              >
-                🔑 修改管理員密碼
-              </button>
-            </div>
-
             {/* System Settings */}
             <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-4 sm:p-6 border border-gray-100">
               <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -4016,63 +3963,6 @@ export default function AttendanceManagement() {
           </div>
         )}
 
-        {/* Password Change Modal */}
-        {showPasswordModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
-              <h3 className="text-xl font-bold mb-4 text-gray-900">修改管理員密碼</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">舊密碼</label>
-                  <input
-                    type="password"
-                    value={passwordForm.oldPassword}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, oldPassword: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="請輸入舊密碼"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">新密碼</label>
-                  <input
-                    type="password"
-                    value={passwordForm.newPassword}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="請輸入新密碼（至少4個字元）"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">確認新密碼</label>
-                  <input
-                    type="password"
-                    value={passwordForm.confirmPassword}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="請再次輸入新密碼"
-                  />
-                </div>
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => {
-                      setShowPasswordModal(false)
-                      setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' })
-                    }}
-                    className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-all font-semibold"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={handleChangePassword}
-                    className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all font-semibold"
-                  >
-                    確認修改
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Member Modal */}

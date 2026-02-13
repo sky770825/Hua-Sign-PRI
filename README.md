@@ -59,7 +59,7 @@ npm start
 
 1. 開啟 [vercel.com](https://vercel.com) → **Add New** → **Project**
 2. 選擇 GitHub 倉庫 `sky770825/Hua-Sign-PRI`
-3. 設定環境變數（Supabase URL、Anon Key、Service Key）
+3. 設定環境變數（Supabase URL、Anon Key、Service Key、`ADMIN_PASSWORD`）
 4. 點 **Deploy**
 
 詳見 [部署到Vercel.md](./部署到Vercel.md)

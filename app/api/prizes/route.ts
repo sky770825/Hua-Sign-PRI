@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase, supabaseService, TABLES, BUCKETS, STORAGE_PATHS, generateStoragePath } from '@/lib/supabase'
-import { apiError, apiSuccess, handleDatabaseError, ensureSupabaseConfigured } from '@/lib/api-utils'
+import { apiError, apiSuccess, handleDatabaseError, ensureSupabaseConfigured, requireSameOrigin } from '@/lib/api-utils'
 import { withCache, CacheKeys, CacheConfig, clearCacheByPrefix } from '@/lib/cache'
 
 export const dynamic = 'force-dynamic'
@@ -47,6 +47,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+
     const formData = await request.formData()
     const name = formData.get('name') as string
     const totalQuantity = parseInt(formData.get('totalQuantity') as string) || 0
@@ -306,4 +309,3 @@ export async function POST(request: Request) {
     )
   }
 }
-

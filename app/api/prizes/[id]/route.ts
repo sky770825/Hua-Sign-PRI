@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase, supabaseService, TABLES, BUCKETS } from '@/lib/supabase'
-import { apiError, apiSuccess, handleDatabaseError } from '@/lib/api-utils'
+import { apiError, apiSuccess, handleDatabaseError, requireSameOrigin } from '@/lib/api-utils'
 import { clearCacheByPrefix, CacheKeys } from '@/lib/cache'
 // 移除 validatePrize 導入，改用直接驗證
 
@@ -11,6 +11,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+
     // Next.js 15+ 使用 Promise
     const resolvedParams = await params
     const formData = await request.formData()
@@ -298,6 +301,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const originCheck = requireSameOrigin(request)
+    if (originCheck) return originCheck
+
     // Next.js 15+ 使用 Promise
     const resolvedParams = await params
     const id = parseInt(resolvedParams.id)
@@ -412,4 +418,3 @@ export async function DELETE(
     return apiError(`刪除獎品失敗：${handleDatabaseError(error)}`, 500)
   }
 }
-
