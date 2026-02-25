@@ -46,10 +46,10 @@
 - **`lib/lottery-deadline.ts`**：抽獎 6:30～7:00、隔週四 6:30 歸零
 - **注意**：修改簽到時間只改 `checkin-times.ts`；抽獎時段在 `lottery-deadline.ts`
 
-### 9. 後台「系統參數」不影響 API
-- **現狀**：會議室開放／遲到門檻／簽到截止存於 localStorage
-- **實際**：API 與簽到邏輯都用 `lib/checkin-times.ts` 的常數
-- **若要改**：請直接編輯 `lib/checkin-times.ts`
+### 9. 後台「系統設定」已與 API 同步
+- **現狀**：後台「系統設定」的會議室開放／遲到門檻／簽到截止／獎品區截止會寫入 DB（`estate_attendance_system_settings`），簽到 API、抽獎 API 與簽到頁皆讀取此設定
+- **預設**：未建表或無儲存過時，使用 `lib/checkin-times.ts` 的預設值
+- **建表**：若資料庫尚未有 `estate_attendance_system_settings`，可執行 `supabase/migrations/20260212000000_add_system_settings.sql` 或重新執行「建立資料表」腳本
 
 ### 10. 僅週四例會
 - 會議建立 API 已限制為週四

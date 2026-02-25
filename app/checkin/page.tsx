@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { debounce } from '@/lib/frontend-utils'
 import { ZOOM_MEETING_URL, ZOOM_MEETING_ID_DISPLAY } from '@/lib/meeting-config'
-import { getSigninTimeLabel, isSigninWindowOpen, getTodayTaipei, CHECKIN_TIMES } from '@/lib/checkin-times'
+import { getSigninTimeLabel, isSigninWindowOpen, getTodayTaipei, CHECKIN_TIMES, parseTimeToMins } from '@/lib/checkin-times'
 import type { Member, CheckinRecord } from '@/types'
 
 export default function CheckinPage() {
@@ -20,6 +20,8 @@ export default function CheckinPage() {
   const [submitting, setSubmitting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  const [checkinTimesConfig, setCheckinTimesConfig] = useState<{ meetingRoomOpen: string; signinStart: string; signinDeadline: string; lotteryCutoff: string } | null>(null)
+  const [minuteTick, setMinuteTick] = useState(0)
 
   const isDevBypass = typeof window !== 'undefined' && (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1')
 
@@ -123,6 +125,16 @@ export default function CheckinPage() {
   // 一律不快取，避免例會當天 6:30 後仍顯示舊的「今日無例會」或跨日未更新
   const noStore = { cache: 'no-store' as RequestCache }
 
+  // 載入簽到時間設定（與後台系統設定同步）
+  useEffect(() => {
+    fetch('/api/settings/checkin-times', noStore)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.meetingRoomOpen) setCheckinTimesConfig(data)
+      })
+      .catch(() => {})
+  }, [])
+
   // 加载数据的函数（會員與簽到並行請求，減少等待時間）
   // forceRefreshMembers：匯入 CSV 後點「重新載入」時帶 true，跳過會員快取以取得最新名單
   const loadData = useCallback(async (forceRefreshMembers = false) => {
@@ -203,7 +215,8 @@ export default function CheckinPage() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [loadData])
 
-  // 倒數計時（會議室 6:30 開放，每分鐘更新）
+  // 倒數計時（會議室開放時間與後台系統設定同步，每分鐘更新）
+  const meetingRoomOpen = checkinTimesConfig?.meetingRoomOpen ?? CHECKIN_TIMES.meetingRoomOpen
   useEffect(() => {
     if (!nextMeeting?.date) {
       setCountdown('')
@@ -211,7 +224,7 @@ export default function CheckinPage() {
     }
     const tick = () => {
       const now = new Date()
-      const [h, m] = CHECKIN_TIMES.meetingRoomOpen.split(':').map(Number)
+      const [h, m] = meetingRoomOpen.split(':').map(Number)
       const target = new Date(nextMeeting.date + `T${String(h || 6).padStart(2, '0')}:${String(m || 30).padStart(2, '0')}:00+08:00`)
       if (now >= target) {
         setCountdown('例會已開始或已結束')
@@ -230,7 +243,7 @@ export default function CheckinPage() {
     tick()
     const interval = setInterval(tick, 60000)
     return () => clearInterval(interval)
-  }, [nextMeeting?.date])
+  }, [nextMeeting?.date, meetingRoomOpen])
 
   // 鍵盤快捷鍵：Ctrl/Cmd+Enter 提交簽到（獨立 effect，用 ref 避免 deps 導致重跑）
   const submitCheckinRef = useRef(submitCheckin)
@@ -250,9 +263,26 @@ export default function CheckinPage() {
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [])
 
-  // 可簽到 = 今日有例會 且 在簽到時段內（會議室開放～簽到截止）
-  // localhost 時可 bypass 時段限制，方便測試
-  const canSignin = meetingStatus !== '今日無例會' && !!today && (isDevBypass || isSigninWindowOpen(today))
+  // 每分鐘更新一次，讓可簽到狀態在跨過開放/截止時間時會更新
+  useEffect(() => {
+    const id = setInterval(() => setMinuteTick((t) => t + 1), 60000)
+    return () => clearInterval(id)
+  }, [])
+
+  // 可簽到 = 今日有例會 且 在簽到時段內（與後台系統設定同步）
+  const isWindowOpenFromConfig = useMemo(() => {
+    if (!checkinTimesConfig || !today) return false
+    const now = new Date()
+    const twHour = parseInt(now.toLocaleString('en-CA', { timeZone: 'Asia/Taipei', hour: '2-digit', hour12: false }), 10)
+    const twMin = parseInt(now.toLocaleString('en-CA', { timeZone: 'Asia/Taipei', minute: '2-digit' }), 10)
+    const dateStr = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' })
+    if (dateStr !== today) return false
+    const mins = twHour * 60 + twMin
+    const openMins = parseTimeToMins(checkinTimesConfig.signinStart)
+    const deadlineMins = parseTimeToMins(checkinTimesConfig.signinDeadline)
+    return mins >= openMins && mins <= deadlineMins
+  }, [checkinTimesConfig, today, minuteTick])
+  const canSignin = meetingStatus !== '今日無例會' && !!today && (isDevBypass || (checkinTimesConfig ? isWindowOpenFromConfig : isSigninWindowOpen(today)))
   const formDisabled = !canSignin
 
   const getCheckinStatus = useCallback((memberId: number) => {
@@ -409,7 +439,9 @@ export default function CheckinPage() {
             </div>
           </div>
           <p className="text-gray-500 text-xs sm:text-sm mb-4 border-l-2 border-indigo-300 pl-3">
-            {getSigninTimeLabel()}
+            {checkinTimesConfig
+                ? `會議室 ${checkinTimesConfig.meetingRoomOpen} 開放｜簽到 ${checkinTimesConfig.signinStart}～${checkinTimesConfig.signinDeadline}｜${checkinTimesConfig.lotteryCutoff} 前簽到才進獎品區`
+                : getSigninTimeLabel()}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 sm:gap-6 items-center">
             <div className="sm:col-span-3 w-full">

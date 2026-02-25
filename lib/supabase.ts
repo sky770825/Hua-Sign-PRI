@@ -35,6 +35,7 @@ export const TABLES = {
   CHECKINS: 'estate_attendance_checkins',
   PRIZES: 'estate_attendance_prizes',
   LOTTERY_WINNERS: 'estate_attendance_lottery_winners',
+  SYSTEM_SETTINGS: 'estate_attendance_system_settings',
 } as const;
 
 // 儲存桶名稱（與 Supabase 儲存桶名稱一致）

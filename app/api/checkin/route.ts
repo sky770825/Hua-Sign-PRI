@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, safeJsonParse, handleDatabaseError } from '@/lib/api-utils'
 import { validateCheckin } from '@/lib/validation'
-import { CHECKIN_TIMES, SIGNIN_OPEN_MINS, SIGNIN_DEADLINE_MINS, LATE_THRESHOLD_MINS } from '@/lib/checkin-times'
+import { parseTimeToMins } from '@/lib/checkin-times'
+import { getCheckinTimesConfig } from '@/lib/settings-checkin-times'
 import { clearCache } from '@/lib/cache'
 
 const CONTEXT_CACHE_KEY = 'attendance:context'
@@ -56,7 +57,12 @@ export async function POST(request: Request) {
       return apiError('今天沒有會議，請先在後台建立會議後再簽到', 400)
     }
 
-    // 簽到時段由 lib/checkin-times 統一設定
+    // 簽到時段與後台「系統設定」同步（會議室開放／遲到門檻／簽到截止）
+    const timesConfig = await getCheckinTimesConfig()
+    const signinOpenMins = parseTimeToMins(timesConfig.signinStart)
+    const signinDeadlineMins = parseTimeToMins(timesConfig.signinDeadline)
+    const lateThresholdMins = parseTimeToMins(timesConfig.lateThreshold)
+
     // 開發環境可傳 _testBypassTime: true 繞過時間檢查（測試用）
     const skipTimeCheck = process.env.NODE_ENV === 'development' && _testBypassTime === true
     const inferCheckinStatus = (): { status: string; reject?: string } => {
@@ -68,9 +74,9 @@ export async function POST(request: Request) {
       const twDateStr = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' })
       const mins = twHour * 60 + twMin
       if (twDateStr !== date) return { status: 'present' }
-      if (mins > SIGNIN_DEADLINE_MINS) return { status: 'absent', reject: `簽到已截止（${CHECKIN_TIMES.signinDeadline}），本次記為缺席` }
-      if (mins < SIGNIN_OPEN_MINS) return { status: 'absent', reject: `簽到尚未開放（${CHECKIN_TIMES.signinStart} 起）` }
-      if (mins >= LATE_THRESHOLD_MINS) return { status: 'late' }
+      if (mins > signinDeadlineMins) return { status: 'absent', reject: `簽到已截止（${timesConfig.signinDeadline}），本次記為缺席` }
+      if (mins < signinOpenMins) return { status: 'absent', reject: `簽到尚未開放（${timesConfig.signinStart} 起）` }
+      if (mins >= lateThresholdMins) return { status: 'late' }
       return { status: 'present' }
     }
     const inferred = inferCheckinStatus()

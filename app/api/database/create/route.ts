@@ -199,6 +199,18 @@ CREATE TRIGGER update_estate_attendance_prizes_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
+-- 📁 分類 6：系統設定 (System Settings)
+-- ============================================
+-- 6. 系統設定表 (estate_attendance_system_settings)
+-- 用途：儲存會議室開放時間等可同步的參數（key-value）
+CREATE TABLE IF NOT EXISTS estate_attendance_system_settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+COMMENT ON TABLE estate_attendance_system_settings IS '系統設定 - 會議室開放/簽到截止等，與後台設定同步';
+
+-- ============================================
 -- ✅ 完成訊息
 -- ============================================
 SELECT '✅ 所有 estate_attendance 資料表已成功建立！' AS message,
@@ -207,7 +219,8 @@ SELECT '✅ 所有 estate_attendance 資料表已成功建立！' AS message,
        '2. 會議管理 (estate_attendance_meetings)' AS table2,
        '3. 簽到記錄 (estate_attendance_checkins)' AS table3,
        '4. 獎品管理 (estate_attendance_prizes)' AS table4,
-       '5. 抽獎記錄 (estate_attendance_lottery_winners)' AS table5;
+       '5. 抽獎記錄 (estate_attendance_lottery_winners)' AS table5,
+       '6. 系統設定 (estate_attendance_system_settings)' AS table6;
 `
 
 export async function POST(request: Request) {
@@ -225,7 +238,8 @@ export async function POST(request: Request) {
       'estate_attendance_meetings',
       'estate_attendance_checkins',
       'estate_attendance_prizes',
-      'estate_attendance_lottery_winners'
+      'estate_attendance_lottery_winners',
+      'estate_attendance_system_settings'
     ]
 
     const results: Record<string, any> = {}

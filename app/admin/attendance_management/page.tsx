@@ -130,23 +130,42 @@ export default function AttendanceManagement() {
   const [careListLoading, setCareListLoading] = useState(false)
   const [careListSummary, setCareListSummary] = useState({ high: 0, medium: 0, low: 0 })
   const [careListFilter, setCareListFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all')
-  const [systemSettings, setSystemSettings] = useState({ autoBackup: false, emailNotifications: false, defaultMeetingTime: '06:30', lateThreshold: '07:00', checkinDeadline: '08:45' })
+  const [systemSettings, setSystemSettings] = useState({ autoBackup: false, emailNotifications: false, defaultMeetingTime: '06:30', lateThreshold: '07:00', checkinDeadline: '08:45', lotteryCutoff: '07:00' })
+  // 載入系統設定：時間參數與 API 同步（GET /api/settings/checkin-times），其餘從 localStorage
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('systemSettings')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        setSystemSettings({
-          autoBackup: !!parsed.autoBackup,
-          emailNotifications: !!parsed.emailNotifications,
-          defaultMeetingTime: parsed.defaultMeetingTime || '06:30',
-          lateThreshold: parsed.lateThreshold || '07:00',
-          checkinDeadline: parsed.checkinDeadline || '08:45',
-        })
+    const load = async () => {
+      try {
+        const saved = localStorage.getItem('systemSettings')
+        let base = { autoBackup: false, emailNotifications: false, defaultMeetingTime: '06:30', lateThreshold: '07:00', checkinDeadline: '08:45', lotteryCutoff: '07:00' }
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          base = {
+            autoBackup: !!parsed.autoBackup,
+            emailNotifications: !!parsed.emailNotifications,
+            defaultMeetingTime: parsed.defaultMeetingTime || '06:30',
+            lateThreshold: parsed.lateThreshold || '07:00',
+            checkinDeadline: parsed.checkinDeadline || '08:45',
+            lotteryCutoff: parsed.lotteryCutoff || '07:00',
+          }
+        }
+        const res = await fetch('/api/settings/checkin-times', { cache: 'no-store' })
+        const apiConfig = await res.json().catch(() => null)
+        if (apiConfig && apiConfig.meetingRoomOpen) {
+          setSystemSettings({
+            ...base,
+            defaultMeetingTime: apiConfig.meetingRoomOpen || base.defaultMeetingTime,
+            lateThreshold: apiConfig.lateThreshold || base.lateThreshold,
+            checkinDeadline: apiConfig.signinDeadline || base.checkinDeadline,
+            lotteryCutoff: apiConfig.lotteryCutoff || base.lotteryCutoff,
+          })
+        } else {
+          setSystemSettings(base)
+        }
+      } catch (e) {
+        console.warn('Failed to load systemSettings:', e)
       }
-    } catch (e) {
-      console.warn('Failed to load systemSettings from localStorage:', e)
     }
+    load()
   }, [])
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
   const [syncToSheetsLoading, setSyncToSheetsLoading] = useState(false)
@@ -3777,7 +3796,7 @@ export default function AttendanceManagement() {
                     <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                   </label>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">會議室開放時間</label>
                     <input
@@ -3808,15 +3827,45 @@ export default function AttendanceManagement() {
                     />
                     <p className="text-xs text-gray-500 mt-1">簽到截止（例：8:45）</p>
                   </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">獎品區截止</label>
+                    <input
+                      type="time"
+                      value={systemSettings.lotteryCutoff}
+                      onChange={(e) => setSystemSettings({ ...systemSettings, lotteryCutoff: e.target.value })}
+                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">此時間前簽到才能抽獎（例：7:00）</p>
+                  </div>
                 </div>
+                <p className="text-xs text-indigo-600 mt-1">儲存後將同步至簽到頁、抽獎頁與 API 判斷</p>
                 <button
-                  onClick={() => {
-                    localStorage.setItem('systemSettings', JSON.stringify(systemSettings))
-                    alert('系統參數已儲存')
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/settings/checkin-times', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          meetingRoomOpen: systemSettings.defaultMeetingTime,
+                          signinStart: systemSettings.defaultMeetingTime,
+                          lateThreshold: systemSettings.lateThreshold,
+                          signinDeadline: systemSettings.checkinDeadline,
+                          lotteryCutoff: systemSettings.lotteryCutoff,
+                        }),
+                      })
+                      const data = await res.json().catch(() => ({}))
+                      if (!res.ok) throw new Error(data.error || '儲存失敗')
+                      localStorage.setItem('systemSettings', JSON.stringify(systemSettings))
+                      setToast({ message: '系統參數已儲存，簽到與抽獎時間已同步', type: 'success' })
+                      setTimeout(() => setToast(null), 3000)
+                    } catch (e) {
+                      setToast({ message: e instanceof Error ? e.message : '儲存失敗', type: 'error' })
+                      setTimeout(() => setToast(null), 3000)
+                    }
                   }}
                   className="w-full px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all font-semibold"
                 >
-                  💾 儲存設定
+                  💾 儲存設定（同步至全系統）
                 </button>
               </div>
             </div>
