@@ -130,19 +130,19 @@ export default function AttendanceManagement() {
   const [careListLoading, setCareListLoading] = useState(false)
   const [careListSummary, setCareListSummary] = useState({ high: 0, medium: 0, low: 0 })
   const [careListFilter, setCareListFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all')
-  const [systemSettings, setSystemSettings] = useState({ autoBackup: false, emailNotifications: false, defaultMeetingTime: '06:30', lateThreshold: '07:00', checkinDeadline: '08:45', lotteryCutoff: '07:00' })
+  const [systemSettings, setSystemSettings] = useState({ autoBackup: false, emailNotifications: false, defaultMeetingTime: '06:15', lateThreshold: '07:00', checkinDeadline: '08:45', lotteryCutoff: '07:00' })
   // 載入系統設定：時間參數與 API 同步（GET /api/settings/checkin-times），其餘從 localStorage
   useEffect(() => {
     const load = async () => {
       try {
         const saved = localStorage.getItem('systemSettings')
-        let base = { autoBackup: false, emailNotifications: false, defaultMeetingTime: '06:30', lateThreshold: '07:00', checkinDeadline: '08:45', lotteryCutoff: '07:00' }
+        let base = { autoBackup: false, emailNotifications: false, defaultMeetingTime: '06:15', lateThreshold: '07:00', checkinDeadline: '08:45', lotteryCutoff: '07:00' }
         if (saved) {
           const parsed = JSON.parse(saved)
           base = {
             autoBackup: !!parsed.autoBackup,
             emailNotifications: !!parsed.emailNotifications,
-            defaultMeetingTime: parsed.defaultMeetingTime || '06:30',
+            defaultMeetingTime: parsed.defaultMeetingTime || '06:15',
             lateThreshold: parsed.lateThreshold || '07:00',
             checkinDeadline: parsed.checkinDeadline || '08:45',
             lotteryCutoff: parsed.lotteryCutoff || '07:00',

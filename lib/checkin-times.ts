@@ -4,9 +4,9 @@
  */
 export const CHECKIN_TIMES = {
   /** 會議室／簽到開放時間（HH:mm） */
-  meetingRoomOpen: '06:30',
+  meetingRoomOpen: '06:15',
   /** 簽到開始（與會議室同步） */
-  signinStart: '06:30',
+  signinStart: '06:15',
   /** 超過此時間算遲到（HH:mm） */
   lateThreshold: '07:00',
   /** 簽到截止（HH:mm），此時間後無法簽到 */

@@ -27,9 +27,9 @@ const DEFAULT_CONFIG: CheckinTimesConfig = {
 }
 
 function normalizeHHmm(v: string): string {
-  if (!v || typeof v !== 'string') return '06:30'
+  if (!v || typeof v !== 'string') return '06:15'
   const parts = v.trim().match(/^(\d{1,2}):(\d{2})$/)
-  if (!parts) return '06:30'
+  if (!parts) return '06:15'
   const h = Math.min(23, Math.max(0, parseInt(parts[1], 10)))
   const m = Math.min(59, Math.max(0, parseInt(parts[2], 10)))
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
