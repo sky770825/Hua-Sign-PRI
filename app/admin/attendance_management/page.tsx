@@ -3838,7 +3838,7 @@ export default function AttendanceManagement() {
                     <p className="text-xs text-gray-500 mt-1">此時間前簽到才能抽獎（例：7:00）</p>
                   </div>
                 </div>
-                <p className="text-xs text-indigo-600 mt-1">儲存後將同步至簽到頁、抽獎頁與 API 判斷</p>
+                <p className="text-xs text-indigo-600 mt-1">儲存後將同步至簽到頁、抽獎頁與 API 判斷。若簽到頁已開啟，請重新整理或切回該分頁即會套用新時間。</p>
                 <button
                   onClick={async () => {
                     try {
@@ -3856,11 +3856,12 @@ export default function AttendanceManagement() {
                       const data = await res.json().catch(() => ({}))
                       if (!res.ok) throw new Error(data.error || '儲存失敗')
                       localStorage.setItem('systemSettings', JSON.stringify(systemSettings))
-                      setToast({ message: '系統參數已儲存，簽到與抽獎時間已同步', type: 'success' })
-                      setTimeout(() => setToast(null), 3000)
+                      setToast({ message: '✅ 已儲存並同步。簽到頁若已開啟請重新整理或切回該分頁即可套用。', type: 'success' })
+                      setTimeout(() => setToast(null), 5000)
                     } catch (e) {
-                      setToast({ message: e instanceof Error ? e.message : '儲存失敗', type: 'error' })
-                      setTimeout(() => setToast(null), 3000)
+                      const msg = e instanceof Error ? e.message : '儲存失敗'
+                      setToast({ message: '❌ ' + msg, type: 'error' })
+                      setTimeout(() => setToast(null), 6000)
                     }
                   }}
                   className="w-full px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all font-semibold"

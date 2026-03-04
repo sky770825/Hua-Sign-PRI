@@ -125,15 +125,27 @@ export default function CheckinPage() {
   // 一律不快取，避免例會當天 6:30 後仍顯示舊的「今日無例會」或跨日未更新
   const noStore = { cache: 'no-store' as RequestCache }
 
-  // 載入簽到時間設定（與後台系統設定同步）
-  useEffect(() => {
-    fetch('/api/settings/checkin-times', noStore)
+  // 載入簽到時間設定（與後台系統設定同步）；切回分頁或每 60 秒重拉，確保改了系統設定後會套用
+  const fetchCheckinTimesConfig = useCallback(() => {
+    fetch('/api/settings/checkin-times?t=' + Date.now(), noStore)
       .then((r) => r.json())
       .then((data) => {
         if (data?.meetingRoomOpen) setCheckinTimesConfig(data)
       })
       .catch(() => {})
   }, [])
+  useEffect(() => {
+    fetchCheckinTimesConfig()
+    const interval = setInterval(fetchCheckinTimesConfig, 60000)
+    return () => clearInterval(interval)
+  }, [fetchCheckinTimesConfig])
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchCheckinTimesConfig()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [fetchCheckinTimesConfig])
 
   // 加载数据的函数（會員與簽到並行請求，減少等待時間）
   // forceRefreshMembers：匯入 CSV 後點「重新載入」時帶 true，跳過會員快取以取得最新名單

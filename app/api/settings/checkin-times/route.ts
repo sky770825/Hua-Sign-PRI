@@ -3,6 +3,7 @@ import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, safeJsonParse } from '@/lib/api-utils'
 import { CHECKIN_TIMES } from '@/lib/checkin-times'
 import { clearCacheByPrefix } from '@/lib/cache'
+import { clearCheckinTimesCache } from '@/lib/settings-checkin-times'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -105,6 +106,7 @@ export async function POST(request: Request) {
     }
 
     clearCacheByPrefix('settings:')
+    clearCheckinTimesCache()
     return apiSuccess({ message: '已儲存，簽到與抽獎時間已同步' })
   } catch (e) {
     console.error('POST checkin-times settings:', e)
