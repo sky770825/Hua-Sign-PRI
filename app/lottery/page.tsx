@@ -453,7 +453,8 @@ export default function LotteryPage() {
     setIsSpinning(true)
     setSelectedPrize(null)
     setWinner(null)
-    startSpinSound().catch(() => null)
+    // 在點擊當下先啟動音效（符合瀏覽器「使用者互動後才播音」政策，提高播放成功率）
+    await startSpinSound().catch(() => null)
 
     try {
       // 抽獎前強制取得最新獎品，確保轉盤與 API 一致
