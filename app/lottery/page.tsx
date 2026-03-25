@@ -51,6 +51,8 @@ export default function LotteryPage() {
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [spinConfigKey, setSpinConfigKey] = useState<SpinConfigKey>('tension')
   const loadIdRef = useRef(0)
+  /** 與後台「獎品區截止」同步，供載入與抽獎後刷新共用 */
+  const lotteryCutoffRef = useRef('07:00')
   const audioContextRef = useRef<AudioContext | null>(null)
   const spinSoundIntervalRef = useRef<number | null>(null)
   const spinConfig = SPIN_CONFIGS[spinConfigKey]
@@ -198,7 +200,7 @@ export default function LotteryPage() {
       setToday(todayDate)
 
       // 并行加载数据以提高性能
-      const [prizesRes, checkinsRes, membersRes, winnersRes, meetingsRes] = await Promise.all([
+      const [prizesRes, checkinsRes, membersRes, winnersRes, meetingsRes, settingsRes] = await Promise.all([
         fetch(`/api/prizes?nocache=1&_t=${Date.now()}`).catch(err => {
           console.error('Error fetching prizes:', err)
           return { ok: false, json: async () => ({ prizes: [] }) }
@@ -207,7 +209,7 @@ export default function LotteryPage() {
           console.error('Error fetching checkins:', err)
           return { ok: false, json: async () => ({ checkins: [], meeting: null }) }
         }),
-        fetch('/api/members').catch(err => {
+        fetch(`/api/members?nocache=1&_t=${Date.now()}`).catch(err => {
           console.error('Error fetching members:', err)
           return { ok: false, json: async () => ({ members: [] }) }
         }),
@@ -219,15 +221,26 @@ export default function LotteryPage() {
           console.error('Error fetching meetings:', err)
           return { ok: false, json: async () => ({ meetings: [] }) }
         }),
+        fetch(`/api/settings/checkin-times?t=${Date.now()}`).catch(err => {
+          console.error('Error fetching checkin-times:', err)
+          return { ok: false, json: async () => ({}) }
+        }),
       ])
 
-      const [prizesData, checkinsData, memberData, winnersData, meetingsData] = await Promise.all([
+      const [prizesData, checkinsData, memberData, winnersData, meetingsData, settingsData] = await Promise.all([
         prizesRes.json().catch(() => ({ prizes: [] })),
         checkinsRes.json().catch(() => ({ checkins: [], meeting: null })),
         membersRes.json().catch(() => ({ members: [] })),
         winnersRes.json().catch(() => ({ winners: [] })),
         meetingsRes.json().catch(() => ({ meetings: [] })),
+        settingsRes.json().catch(() => ({})),
       ])
+
+      const lotteryCutoffHHmm =
+        typeof settingsData.lotteryCutoff === 'string' && settingsData.lotteryCutoff.includes(':')
+          ? settingsData.lotteryCutoff
+          : lotteryCutoffRef.current
+      lotteryCutoffRef.current = lotteryCutoffHHmm
       
       // 檢查是否有今天的會議，如果沒有，使用最新的會議日期
       const todayMeeting = checkinsData.meeting || (meetingsData.meetings || []).find((m: any) => m.date === todayDate)
@@ -315,8 +328,13 @@ export default function LotteryPage() {
         (memberData.members || []).map((m: MemberInfo) => [m.id, m])
       )
       
-      // 獎品區僅計 7:00 前簽到者
-      const LOTTERY_CUTOFF = new Date(targetDate + 'T07:00:00+08:00').getTime()
+      // 獎品區截止：與後台系統設定、/api/lottery/draw 一致
+      const [cutH, cutM] = lotteryCutoffHHmm.split(':').map((n: string) => parseInt(n, 10))
+      const hh = Number.isFinite(cutH) ? Math.min(23, Math.max(0, cutH)) : 7
+      const mm = Number.isFinite(cutM) ? Math.min(59, Math.max(0, cutM)) : 0
+      const LOTTERY_CUTOFF = new Date(
+        `${targetDate}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00+08:00`
+      ).getTime()
       const members: CheckinMember[] = []
       const seen = new Set<number>()
       const ATTENDANCE_STATUSES = ['present', 'early', 'late', 'early_leave', 'proxy']
@@ -577,17 +595,30 @@ export default function LotteryPage() {
                 const memberMap = new Map<number, { id: number; name: string }>()
                 
                 // 獲取會員資料
-                const membersRes = await fetch('/api/members')
+                const membersRes = await fetch(`/api/members?nocache=1&_t=${Date.now()}`)
                 if (membersRes.ok) {
                   const memberData = await membersRes.json()
                   memberData.members?.forEach((m: { id: number; name: string }) => {
                     memberMap.set(m.id, m)
                   })
                 }
-                
+
+                const [pch, pcm] = lotteryCutoffRef.current.split(':').map((n: string) => parseInt(n, 10))
+                const ph = Number.isFinite(pch) ? Math.min(23, Math.max(0, pch)) : 7
+                const pm = Number.isFinite(pcm) ? Math.min(59, Math.max(0, pcm)) : 0
+                const postDrawCutoff = new Date(
+                  `${drawDate}T${String(ph).padStart(2, '0')}:${String(pm).padStart(2, '0')}:00+08:00`
+                ).getTime()
+                const postStatuses = ['present', 'early', 'late', 'early_leave', 'proxy'] as const
+
                 if (checkinsData.checkins) {
-                  checkinsData.checkins.forEach((checkin: { member_id: number; status?: string }) => {
-                    if (checkin.status && checkin.status !== 'present') return
+                  const postSeen = new Set<number>()
+                  checkinsData.checkins.forEach((checkin: { member_id: number; status?: string; checkin_time?: string }) => {
+                    if (!checkin.status || !postStatuses.includes(checkin.status as (typeof postStatuses)[number])) return
+                    const ct = checkin.checkin_time
+                    if (ct && new Date(ct).getTime() >= postDrawCutoff) return
+                    if (postSeen.has(checkin.member_id)) return
+                    postSeen.add(checkin.member_id)
                     const member = memberMap.get(checkin.member_id)
                     if (member) {
                       members.push({
