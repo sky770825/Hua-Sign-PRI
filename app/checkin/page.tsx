@@ -148,14 +148,14 @@ export default function CheckinPage() {
   }, [fetchCheckinTimesConfig])
 
   // 加载数据的函数（會員與簽到並行請求，減少等待時間）
-  // forceRefreshMembers：匯入 CSV 後點「重新載入」時帶 true，跳過會員快取以取得最新名單
-  const loadData = useCallback(async (forceRefreshMembers = false) => {
+  // 會員一律 nocache：略過伺服器／CDN 快取，後台新增會員後輪詢或切回分頁可盡快看到名單
+  const loadData = useCallback(async () => {
     setLoadError(null)
     try {
       const todayDate = getTodayTaipei()
       setToday(todayDate)
 
-      const membersUrl = forceRefreshMembers ? '/api/members?nocache=1' : '/api/members'
+      const membersUrl = '/api/members?nocache=1&_t=' + Date.now()
       const [membersRes, checkinsRes] = await Promise.all([
         fetch(membersUrl, noStore),
         fetch(`/api/checkins?date=${todayDate}&_t=${Date.now()}`, noStore),
@@ -570,7 +570,7 @@ export default function CheckinPage() {
                   {loadError || '請聯繫管理員匯入會員'}
                 </p>
                 <button
-                  onClick={() => { setLoading(true); loadData(true) }}
+                  onClick={() => { setLoading(true); loadData() }}
                   className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm"
                 >
                   重新載入

@@ -232,15 +232,16 @@ export default function AttendanceManagement() {
     }
   }, [])
 
-  const loadData = useCallback(async (silent = false, dateOverride?: string) => {
+  const loadData = useCallback(async (silent = false, dateOverride?: string, forceFresh = false) => {
     if (!silent) {
       setLoading(true)
     }
     try {
       const targetDate = dateOverride ?? selectedDate
       // 單一情境 API：一次取得 members、meetings、checkinsByDate、meetingStats
-      // 非靜默載入（使用者操作、匯入後等）帶 fresh=1 跳過快取，確保看到最新會員與簽到
-      const contextUrl = silent ? '/api/attendance/context' : '/api/attendance/context?fresh=1'
+      // 非靜默載入帶 fresh=1；靜默載入僅在 forceFresh 時帶 fresh=1（避免變更後背景刷新仍命中 45s 快取而覆蓋樂觀更新）
+      const contextUrl =
+        !silent || forceFresh ? '/api/attendance/context?fresh=1' : '/api/attendance/context'
       const contextRes = await fetchWithTimeout(contextUrl, undefined, 12000)
       if (!contextRes.ok) {
         console.warn('Context API failed, fallback to empty data')
@@ -793,7 +794,7 @@ export default function AttendanceManagement() {
         console.error('簽到失敗:', { status: response.status, error: errorMessage })
         
         // 失敗時恢復原狀態（背景靜默刷新，避免整頁「載入中」閃動）
-        await loadData(true, selectedDate)
+        await loadData(true, selectedDate, true)
         setToast({ message: `簽到失敗：${errorMessage}`, type: 'error' })
         setTimeout(() => setToast(null), 4000)
         return
@@ -806,14 +807,14 @@ export default function AttendanceManagement() {
         // 前端已經樂觀更新為已簽到，這裡不再強制重抓，避免畫面一閃又還原
         // 延遲背景刷新，確保簽到狀態保持
         setTimeout(() => {
-          loadData(true, selectedDate).catch(err => console.error('背景刷新失敗:', err))
+          loadData(true, selectedDate, true).catch(err => console.error('背景刷新失敗:', err))
         }, 2000)
         
         setToast({ message: '簽到成功！', type: 'success' })
         setTimeout(() => setToast(null), 3000)
       } else {
         // 失敗時恢復原狀態（靜默刷新）
-        await loadData(true, selectedDate)
+        await loadData(true, selectedDate, true)
         setToast({ message: '簽到失敗：' + (data.error || '未知錯誤'), type: 'error' })
         setTimeout(() => setToast(null), 4000)
       }
@@ -822,7 +823,7 @@ export default function AttendanceManagement() {
       const errorMessage = error instanceof Error ? error.message : '簽到失敗'
       
       // 失敗時恢復原狀態（靜默刷新）
-      await loadData(true, selectedDate)
+      await loadData(true, selectedDate, true)
       setToast({ message: `簽到失敗：${errorMessage}`, type: 'error' })
       setTimeout(() => setToast(null), 4000)
     } finally {
@@ -877,7 +878,7 @@ export default function AttendanceManagement() {
           // 成功刪除
           // 延遲背景刷新，確保刪除狀態保持
           setTimeout(() => {
-            loadData(true, selectedDate).catch(err => console.error('背景刷新失敗:', err))
+            loadData(true, selectedDate, true).catch(err => console.error('背景刷新失敗:', err))
           }, 2000)
           
           setToast({ message: '簽到記錄已成功刪除', type: 'success' })
@@ -888,7 +889,7 @@ export default function AttendanceManagement() {
         if (checkinToDelete) {
           setCheckins(prev => [...prev, checkinToDelete])
         }
-        await loadData(true, selectedDate)
+        await loadData(true, selectedDate, true)
         setToast({ message: '刪除失敗：' + (data.error || '未知錯誤'), type: 'error' })
         setTimeout(() => setToast(null), 4000)
       }
@@ -898,7 +899,7 @@ export default function AttendanceManagement() {
       if (checkinToDelete) {
         setCheckins(prev => [...prev, checkinToDelete])
       }
-      await loadData(true, selectedDate)
+      await loadData(true, selectedDate, true)
       const errorMessage = error instanceof Error ? error.message : '刪除失敗'
       setToast({ message: `刪除失敗：${errorMessage}`, type: 'error' })
       setTimeout(() => setToast(null), 4000)
@@ -1028,7 +1029,7 @@ export default function AttendanceManagement() {
       })
 
       if (!response.ok) {
-        await loadData(true, selectedDate)
+        await loadData(true, selectedDate, true)
         const errorData = await response.json().catch(() => ({ error: '更新失敗' }))
         setToast({ message: `更新失敗：${errorData.error || '更新失敗'}`, type: 'error' })
         setTimeout(() => setToast(null), 4000)
@@ -1046,14 +1047,14 @@ export default function AttendanceManagement() {
         }
         setToast({ message: isCreate ? '簽到記錄已新增' : '簽到記錄已成功更新', type: 'success' })
         setTimeout(() => setToast(null), 3000)
-        setTimeout(() => loadData(true, selectedDate).catch(() => {}), 500)
+        setTimeout(() => loadData(true, selectedDate, true).catch(() => {}), 500)
       } else {
-        await loadData(true, selectedDate)
+        await loadData(true, selectedDate, true)
         setToast({ message: '更新失敗：' + (data.error || '未知錯誤'), type: 'error' })
         setTimeout(() => setToast(null), 4000)
       }
     } catch (error) {
-      await loadData(true, selectedDate)
+      await loadData(true, selectedDate, true)
       const errorMessage = error instanceof Error ? error.message : '更新失敗'
       setToast({ message: `更新失敗：${errorMessage}`, type: 'error' })
       setTimeout(() => setToast(null), 4000)
@@ -1095,7 +1096,7 @@ export default function AttendanceManagement() {
           // 前端已經將會員從列表中移除，這裡不再強制重抓，避免列表又被還原
           // 延遲背景刷新，確保刪除狀態保持
           setTimeout(() => {
-            loadData(true).catch(err => console.error('背景刷新失敗:', err))
+            loadData(true, undefined, true).catch(err => console.error('背景刷新失敗:', err))
           }, 2000)
           
           setToast({ message: '會員已成功刪除', type: 'success' })
@@ -1183,14 +1184,14 @@ export default function AttendanceManagement() {
           } else {
             // 失敗時恢復原數據（靜默刷新）
             setMembers(prev => prev.map(m => m.id === savedEditingMember.id ? savedEditingMember : m))
-            await loadData(true)
+            await loadData(true, undefined, true)
             setToast({ message: '更新失敗：' + (data.error || '未知錯誤'), type: 'error' })
             setTimeout(() => setToast(null), 4000)
           }
         } else {
           // 失敗時恢復原數據（靜默刷新）
           setMembers(prev => prev.map(m => m.id === savedEditingMember.id ? savedEditingMember : m))
-          await loadData(true)
+          await loadData(true, undefined, true)
           const errorData = await response.json().catch(() => ({ error: '更新失敗' }))
           setToast({ message: '更新失敗：' + (errorData.error || '未知錯誤'), type: 'error' })
           setTimeout(() => setToast(null), 4000)
@@ -1253,7 +1254,7 @@ export default function AttendanceManagement() {
           console.error('新增會員請求失敗:', fetchError)
           // 失敗時從列表中移除
           setMembers(prev => prev.filter(m => m.id !== memberId))
-          await loadData(true)
+          await loadData(true, undefined, true)
           setToast({ message: '新增失敗：網路錯誤，請檢查連線狀態', type: 'error' })
           setTimeout(() => setToast(null), 4000)
           return
@@ -1269,7 +1270,7 @@ export default function AttendanceManagement() {
             console.error('解析 API 響應失敗:', jsonError)
             // 失敗時從列表中移除
             setMembers(prev => prev.filter(m => m.id !== memberId))
-            await loadData(true)
+            await loadData(true, undefined, true)
             setToast({ message: '新增失敗：伺服器響應格式錯誤', type: 'error' })
             setTimeout(() => setToast(null), 4000)
             return
@@ -1281,7 +1282,7 @@ export default function AttendanceManagement() {
             // 前端已經樂觀更新，但為了確保資料一致性，進行背景刷新
             // 使用 setTimeout 延遲刷新，避免立即覆蓋樂觀更新
             setTimeout(() => {
-              loadData(true).catch(err => console.error('背景刷新失敗:', err))
+              loadData(true, undefined, true).catch(err => console.error('背景刷新失敗:', err))
             }, 1000)
             
             setToast({ message: '會員已成功新增', type: 'success' })
@@ -1290,7 +1291,7 @@ export default function AttendanceManagement() {
           } else {
             // 失敗時從列表中移除（靜默刷新）
             setMembers(prev => prev.filter(m => m.id !== memberId))
-            await loadData(true)
+            await loadData(true, undefined, true)
             const errorMessage = filterVercelText(data.error || '新增失敗：未知錯誤')
             console.error('新增會員失敗:', errorMessage, data)
             setToast({ message: '新增失敗：' + errorMessage, type: 'error' })
@@ -1299,7 +1300,7 @@ export default function AttendanceManagement() {
         } else {
           // 失敗時從列表中移除（靜默刷新）
           setMembers(prev => prev.filter(m => m.id !== memberId))
-          await loadData(true)
+          await loadData(true, undefined, true)
           
           let errorData;
           try {
@@ -1484,7 +1485,7 @@ export default function AttendanceManagement() {
       
       if (failed.length > 0) {
         // 部分失敗時，靜默刷新恢復失敗的項目
-        await loadData(true, selectedDate)
+        await loadData(true, selectedDate, true)
         console.error('批量簽到部分失敗:', failed)
         const errorMessages = failed.map((f: any) => f.reason?.message || '未知錯誤').join('、')
         setToast({ 
@@ -1500,7 +1501,7 @@ export default function AttendanceManagement() {
     } catch (error) {
       console.error('Error batch checking in:', error)
       // 失敗時恢復（靜默刷新）
-      await loadData(true, selectedDate)
+      await loadData(true, selectedDate, true)
       setToast({ 
         message: '批量簽到失敗：' + (error instanceof Error ? error.message : '未知錯誤'), 
         type: 'error' 
@@ -1551,7 +1552,7 @@ export default function AttendanceManagement() {
       if (failed.length > 0) {
         // 部分失敗時，恢復失敗的項目並靜默刷新
         setCheckins(prev => [...prev, ...checkinsToDelete])
-        await loadData(true, selectedDate)
+        await loadData(true, selectedDate, true)
         console.error('批量刪除部分失敗:', failed)
         const errorMessages = failed.map((f: any) => f.reason?.message || '未知錯誤').join('、')
         setToast({ 
@@ -1568,7 +1569,7 @@ export default function AttendanceManagement() {
       console.error('Error batch deleting:', error)
       // 失敗時恢復（靜默刷新）
       setCheckins(prev => [...prev, ...checkinsToDelete])
-      await loadData(true, selectedDate)
+      await loadData(true, selectedDate, true)
       setToast({ 
         message: '批量刪除失敗：' + (error instanceof Error ? error.message : '未知錯誤'), 
         type: 'error' 

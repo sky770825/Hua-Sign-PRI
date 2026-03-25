@@ -40,11 +40,16 @@ export async function GET(request: Request) {
       )
     }
 
+    // nocache：避免 CDN／瀏覽器快取舊名單（後台新增會員後簽到頁須即時看到）
+    const cacheControl = nocache
+      ? 'private, no-store, no-cache, must-revalidate'
+      : 'public, s-maxage=300, stale-while-revalidate=600'
+
     return NextResponse.json(
       { members },
       {
         headers: {
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+          'Cache-Control': cacheControl,
         },
       }
     )
