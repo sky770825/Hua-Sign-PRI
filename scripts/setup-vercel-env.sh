@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 從 .env.local 讀取 Supabase 變數並同步到 Vercel
+# 從 .env.local 讀取 Supabase 與後台密碼變數並同步到 Vercel
 # 使用方式：./scripts/setup-vercel-env.sh [--project 專案名稱] [--output-only]
 #   --project: 指定 Vercel 專案名稱，例：--project hua-sign-pri
 #   --output-only: 僅輸出變數，供手動貼到 Vercel Dashboard
@@ -61,6 +61,7 @@ SUPABASE_URL=$(get_var "NEXT_PUBLIC_SUPABASE_URL")
 ANON_KEY=$(get_var "NEXT_PUBLIC_SUPABASE_ANON_KEY")
 SERVICE_KEY=$(get_var "SUPABASE_SERVICE_KEY")
 SERVICE_ROLE=$(get_var "SUPABASE_SERVICE_ROLE_KEY")
+ADMIN_PASSWORD=$(get_var "ADMIN_PASSWORD")
 
 # 若沒有 SUPABASE_SERVICE_KEY 則嘗試 SUPABASE_SERVICE_ROLE_KEY
 [[ -z "$SERVICE_KEY" && -n "$SERVICE_ROLE" ]] && SERVICE_KEY="$SERVICE_ROLE"
@@ -86,6 +87,11 @@ if [[ "$OUTPUT_ONLY" == "true" ]]; then
   echo "NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL"
   echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
   echo "SUPABASE_SERVICE_KEY=$SERVICE_KEY"
+  if [[ -n "$ADMIN_PASSWORD" ]]; then
+    echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+  else
+    echo "# ADMIN_PASSWORD=（請在 .env.local 設定後再輸出，或直接在 Vercel 新增）"
+  fi
   echo ""
   echo "✅ 輸出完成"
   exit 0
@@ -114,8 +120,14 @@ for target in production preview; do
   add_env "NEXT_PUBLIC_SUPABASE_URL" "$SUPABASE_URL" "false" "$target"
   add_env "NEXT_PUBLIC_SUPABASE_ANON_KEY" "$ANON_KEY" "true" "$target"
   add_env "SUPABASE_SERVICE_KEY" "$SERVICE_KEY" "true" "$target"
+  if [[ -n "$ADMIN_PASSWORD" ]]; then
+    add_env "ADMIN_PASSWORD" "$ADMIN_PASSWORD" "true" "$target"
+  fi
 done
 
 echo ""
 echo "✅ 環境變數已同步至 Vercel"
+if [[ -z "$ADMIN_PASSWORD" ]]; then
+  echo "⚠️  未在 .env.local 設定 ADMIN_PASSWORD，後台登入會顯示「未啟用」。請在 Vercel 新增該變數並 Redeploy，或寫入 .env.local 後再執行本腳本。"
+fi
 echo "💡 請在 Vercel Dashboard 執行 Redeploy，或執行：npm run deploy:vercel"

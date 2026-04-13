@@ -3,7 +3,7 @@ import { supabaseService, TABLES } from '@/lib/supabase'
 import { apiError, apiSuccess, safeJsonParse } from '@/lib/api-utils'
 import { CHECKIN_TIMES } from '@/lib/checkin-times'
 import { clearCacheByPrefix } from '@/lib/cache'
-import { clearCheckinTimesCache } from '@/lib/settings-checkin-times'
+import { clearCheckinTimesCache, parseStoredCheckinTimes } from '@/lib/settings-checkin-times'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -55,13 +55,7 @@ export async function GET() {
       return NextResponse.json({ ...DEFAULT_CONFIG, _source: 'default' })
     }
 
-    const config: CheckinTimesConfig = {
-      meetingRoomOpen: normalizeHHmm(value.meetingRoomOpen ?? DEFAULT_CONFIG.meetingRoomOpen),
-      signinStart: normalizeHHmm(value.signinStart ?? DEFAULT_CONFIG.signinStart),
-      lateThreshold: normalizeHHmm(value.lateThreshold ?? DEFAULT_CONFIG.lateThreshold),
-      signinDeadline: normalizeHHmm(value.signinDeadline ?? DEFAULT_CONFIG.signinDeadline),
-      lotteryCutoff: normalizeHHmm(value.lotteryCutoff ?? DEFAULT_CONFIG.lotteryCutoff),
-    }
+    const config = parseStoredCheckinTimes(value)
     return NextResponse.json({ ...config, _source: 'database' })
   } catch (e) {
     console.warn('GET checkin-times settings:', e)

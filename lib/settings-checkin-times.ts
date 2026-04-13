@@ -35,6 +35,29 @@ function normalizeHHmm(v: string): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+/**
+ * 將 DB 內 JSON 轉成與 POST 儲存邏輯一致的設定。
+ * 若舊資料只有 meetingRoomOpen 沒有 signinStart，簽到開始應等同會議室開放（與後台「儲存設定」行為一致）。
+ */
+export function parseStoredCheckinTimes(
+  value: Record<string, string> | null | undefined
+): CheckinTimesConfig {
+  if (!value || typeof value !== 'object') {
+    return DEFAULT_CONFIG
+  }
+  const meetingRoomOpen = normalizeHHmm(value.meetingRoomOpen ?? DEFAULT_CONFIG.meetingRoomOpen)
+  const signinStart = normalizeHHmm(
+    value.signinStart ?? value.meetingRoomOpen ?? DEFAULT_CONFIG.signinStart
+  )
+  return {
+    meetingRoomOpen,
+    signinStart,
+    lateThreshold: normalizeHHmm(value.lateThreshold ?? DEFAULT_CONFIG.lateThreshold),
+    signinDeadline: normalizeHHmm(value.signinDeadline ?? DEFAULT_CONFIG.signinDeadline),
+    lotteryCutoff: normalizeHHmm(value.lotteryCutoff ?? DEFAULT_CONFIG.lotteryCutoff),
+  }
+}
+
 /** 伺服器端取得目前簽到時間設定（有快取，與後台儲存同步） */
 export async function getCheckinTimesConfig(): Promise<CheckinTimesConfig> {
   const config = await withCache(
@@ -51,14 +74,7 @@ export async function getCheckinTimesConfig(): Promise<CheckinTimesConfig> {
           return DEFAULT_CONFIG
         }
 
-        const v = data.value as Record<string, string>
-        return {
-          meetingRoomOpen: normalizeHHmm(v.meetingRoomOpen ?? DEFAULT_CONFIG.meetingRoomOpen),
-          signinStart: normalizeHHmm(v.signinStart ?? DEFAULT_CONFIG.signinStart),
-          lateThreshold: normalizeHHmm(v.lateThreshold ?? DEFAULT_CONFIG.lateThreshold),
-          signinDeadline: normalizeHHmm(v.signinDeadline ?? DEFAULT_CONFIG.signinDeadline),
-          lotteryCutoff: normalizeHHmm(v.lotteryCutoff ?? DEFAULT_CONFIG.lotteryCutoff),
-        }
+        return parseStoredCheckinTimes(data.value as Record<string, string>)
       } catch {
         return DEFAULT_CONFIG
       }

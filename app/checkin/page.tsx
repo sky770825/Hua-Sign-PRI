@@ -290,7 +290,10 @@ export default function CheckinPage() {
     const dateStr = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' })
     if (dateStr !== today) return false
     const mins = twHour * 60 + twMin
-    const openMins = parseTimeToMins(checkinTimesConfig.signinStart)
+    // 與 API 一致：簽到開始未單獨設定時等同會議室開放（見 parseStoredCheckinTimes / POST checkin-times）
+    const signinOpen =
+      checkinTimesConfig.signinStart || checkinTimesConfig.meetingRoomOpen
+    const openMins = parseTimeToMins(signinOpen)
     const deadlineMins = parseTimeToMins(checkinTimesConfig.signinDeadline)
     return mins >= openMins && mins <= deadlineMins
   }, [checkinTimesConfig, today, minuteTick])
